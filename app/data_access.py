@@ -92,7 +92,9 @@ def snowflake_query(sql: str, params: list | None = None) -> pd.DataFrame:
     cursor = con.cursor()
     try:
         cursor.execute(sql, params or [])
-        return cursor.fetch_pandas_all()
+        frame = cursor.fetch_pandas_all()
+        frame.columns = frame.columns.str.lower()
+        return frame
     finally:
         cursor.close()
 
