@@ -9,7 +9,7 @@ PKDD'99 Czech banking data · local DuckDB warehouse · Streamlit review dashboa
 
 This project predicts whether a loan will default using only information that was available before the loan was granted. The data comes from the PKDD'99 Czech banking dataset: 682 loans, 76 defaults, and 1,056,320 transactions between 1993 and 1998.
 
-The work covers the full path from raw CSV extracts to a leakage-safe feature mart, six classifiers under repeated cross-validation, association-rule mining, customer segmentation, and a six-page interactive dashboard. The selected model is a tuned Gradient Boosting classifier with repeated-CV F1 `0.571 ± 0.120`, average precision `0.654`, and ROC-AUC `0.864`. Random Forest is statistically tied on F1 and leads on average precision and ROC-AUC, so the result is best read as a leading pair rather than a single winning algorithm.
+The work covers the full path from raw CSV extracts to a leakage-safe feature mart, six classifiers under repeated cross-validation, association-rule mining, customer segmentation, and an eight-page interactive dashboard. The selected model is a tuned Gradient Boosting classifier with repeated-CV F1 `0.571 ± 0.120`, average precision `0.654`, and ROC-AUC `0.864`. Random Forest is statistically tied on F1 and leads on average precision and ROC-AUC, so the result is best read as a leading pair rather than a single winning algorithm.
 
 The strongest signal is the customer's balance before the loan. Age and gender carry almost no predictive value. A simple balance screen below CZK 20,000 flags 97 of 682 applications and catches 34 of 76 defaults, with 35.1% precision against an 11.1% base rate.
 
@@ -219,26 +219,57 @@ The negative-balance rule covers all 27 loans with a negative minimum balance an
 
 ### Behaviour segments
 
-KMeans with `k=2` gives a modest silhouette of 0.29:
+#### Dataset and preparation
 
-| Segment | Loans | Default rate |
-|---|---:|---:|
-| Segment 0: quieter, thinner balances | 421 | 12.4% |
-| Segment 1: more active, higher balances | 261 | 9.2% |
+The unsupervised analysis uses the same 682 loans, but only the 13 pre-loan behavioural features: transaction count, deposit count, withdrawal count, deposit value, withdrawal value, average and standard deviation of transaction amount, average/minimum/maximum balance, balance at loan origination, months active, and transactions per month. Loan amount, duration, and payments are excluded because they describe the product, not behaviour. Age and gender are excluded because they are demographic attributes and should not drive segmentation. The target is not used to fit or select clusters; default rates are joined afterwards for interpretation only.
 
-The segments overlap. They describe broad tendencies, not sharply separated customer types.
+The matrix has no missing values and no zero-variance columns. A Hopkins statistic of 0.85 indicates clusterable structure, although several features are correlated: deposit and withdrawal value correlate at 0.997, transaction count and withdrawal count at 0.981, and average and standard deviation of amount at 0.941. Features are standardised with `StandardScaler`; PCA is used only for 2-D visualisation, never for fitting. A pruned six-feature sensitivity set (transaction count, deposit value, average balance, balance at loan, months active, transactions per month) raises silhouette slightly (K-Means 0.308, K-Medoids 0.315, AGNES 0.290), but the 13-feature set is kept as the primary view because it covers both activity volume and balance behaviour.
 
-![Segment default rates](images/patterns/10_segment_default_rates.png)
+#### Four-algorithm comparison
 
-![Segment scatter](images/patterns/11_segment_scatter.png)
+All four algorithms use the same 682 x 13 standardised matrix and the same selection rule: no target, minimum cluster share 5%, and the highest valid silhouette. K-Means and K-Medoids search `k=2..6`; AGNES uses Ward linkage over the same range; DBSCAN scans `eps=0.8..2.0` with `min_samples=5`. Stability is the mean Adjusted Rand Index over 10 subsamples of 90% of the loans.
 
-The clustering comparison also covers K-medoids, AGNES with Ward linkage, and DBSCAN. DBSCAN flags 21.5% of defaults as noise, against an 11.1% base rate; that is a warning that the cluster structure is not clean.
+| Algorithm | Selected parameters | Clusters | Sizes | Default rate | Silhouette | Davies-Bouldin | Calinski-Harabasz | Stability ARI |
+|---|---|---:|---|---:|---:|---:|---:|---:|
+| K-Means | `k=2`, `n_init=10` | 2 | 421 / 261 | 12.35% / 9.20% | 0.294 | 1.346 | 306.3 | 0.931 ± 0.095 |
+| K-Medoids | `k=2`, 5 restarts | 2 | 386 / 296 | 12.18% / 9.80% | 0.282 | 1.406 | 285.0 | 0.534 ± 0.202 |
+| AGNES | Ward, `k=2` | 2 | 568 / 114 | 11.80% / 7.89% | 0.288 | 1.219 | 200.2 | 0.421 ± 0.148 |
+| DBSCAN | `eps=1.4`, `min_samples=5` | 1 core + noise | 553 / 129 | 8.32% / 23.26% | n/a | n/a | n/a | 0.847 ± 0.106 |
+
+DBSCAN could not produce two stable clusters of at least 5% each at a reasonable noise level. Its second groups contained only 3–21 loans, so they were merged into noise rather than reported as segments. The selected solution is therefore one dense core plus an outlier layer. Silhouette, Davies-Bouldin, and Calinski-Harabasz are undefined for one cluster and are shown as `n/a`.
+
+![Clustering metric comparison](images/clustering/23_clustering_metrics.png)
+
+![PCA cluster maps](images/clustering/24_clustering_pca.png)
+
+![Cluster default rates](images/clustering/25_clustering_default_rates.png)
+
+#### Strengths and limitations
+
+| Algorithm | Strength | Limitation | Role |
+|---|---|---|---|
+| K-Means | Fast, stable, full coverage, supports scoring new loans | Assumes roughly spherical, similarly sized clusters; needs `k` | Primary segmentation |
+| K-Medoids | Robust to outliers; medoids are real loans | Initialisation-sensitive; slower; stability only 0.534 | Alternative partitional view |
+| AGNES | Builds a hierarchy; no centroid assumption | No natural predict step; least stable here; small high-activity cluster | Hierarchical cross-check |
+| DBSCAN | Finds arbitrary shapes and isolates noise | One dense core only; `eps` sensitive; no usable multi-segment split | Outlier and risk flag |
+
+K-Means is the recommended primary algorithm. It has the highest valid silhouette (0.294), the highest stability (0.931), covers every loan, and can score new applications. K-Medoids is a close second on fit but is much less stable across subsamples. AGNES is useful as a hierarchical cross-check but its 114-loan high-activity group is less stable. DBSCAN is not a segmentation algorithm on this data; it is valuable as an outlier detector because the noise group defaults at 23.26%, more than twice the 11.14% base rate. GMM was considered but not included in the main comparison because BIC and silhouette disagreed on the number of components; it remains a sensitivity option.
+
+#### Selected implementation and practical meaning
+
+K-Means with `k=2` separates a larger low-activity group (421 loans, 52 defaults, 12.35%) from a smaller high-activity group (261 loans, 24 defaults, 9.20%). The low-activity group has a median of about 54 transactions, 10 months active, and a CZK 37k average balance; the high-activity group has about 116 transactions, 17 months active, and a CZK 52k average balance. The separation is modest, so the segments are broad tendencies rather than distinct customer types.
+
+The practical use is to combine the segment with the supervised score, not to replace it. Low-activity loans can enter an earlier engagement or reminder queue; high-activity loans can follow standard monitoring. DBSCAN noise is a separate manual-review flag: 129 loans, 30 defaults, 23.26% default rate. The cluster labels are descriptive, not causal, and should not be used as automatic rejection rules.
+
+#### Metrics used
+
+Silhouette (higher is better) compares within-cluster cohesion with separation to the nearest other cluster. Davies-Bouldin (lower is better) averages the worst pairwise cluster similarity. Calinski-Harabasz (higher is better) is the ratio of between-cluster to within-cluster dispersion. Adjusted Rand Index (higher is better) measures agreement between clusterings on subsamples and is invariant to label permutation. None of these metrics uses the target. Accuracy, precision, recall, F1, and the confusion matrix belong to the supervised classification section; applying them to clusters would require treating an arbitrary cluster label as a class and would be misleading.
 
 ---
 
 ## 9. Interactive dashboard
 
-The dashboard is a six-page Streamlit app. It reads the local DuckDB warehouse and saved artifacts; it does not retrain models on page load. All charts are Altair with hover, zoom, and pan. The schema view is Graphviz.
+The dashboard is an eight-page Streamlit app. It reads the local DuckDB warehouse and saved artifacts; it does not retrain models on page load. When `DATA_SOURCE=snowflake`, the six modelled MART tables are read from Snowflake instead of DuckDB. All charts are Altair with hover, zoom, and pan. The schema view is Graphviz.
 
 ### Executive overview
 
@@ -260,9 +291,21 @@ Metric-aware repeated-CV mean ±1 SD dot plot, ranking table, held-out metric he
 
 ### Patterns
 
-Default rules, CBA coverage bars with covered-default counts, itemset support bars, cluster scatter with a base-rate line, and PCA cluster maps.
+Default rules, CBA coverage bars with covered-default counts, and itemset support bars for Apriori and FP-Growth.
 
 ![Patterns](images/dashboard/15_dashboard_patterns.png)
+
+### Segments
+
+Dataset card, four-algorithm comparison table, metric and stability charts, PCA cluster maps, cluster profiles, default-rate chart, and the K-Means verdict.
+
+![Segments](images/dashboard/26_dashboard_segments.png)
+
+### Snowflake deployment
+
+Dashboard 2 documents the Snowflake deployment. It shows the RAW/MART schema split, the 13 expected objects with row counts, live counts and view samples when Snowflake mode is enabled, and the verification SQL. The loader routes raw extracts to RAW and modelled tables to MART, truncating each target before writing so reruns are idempotent.
+
+![Snowflake deployment](images/dashboard/27_dashboard_snowflake.png)
 
 ### Simulator
 
@@ -275,6 +318,14 @@ Scores one application with the saved tuned Gradient Boosting pipeline, shows it
 Graphviz galaxy diagram, analytics row-count chart, join keys, and column dictionary.
 
 ![Data model card](images/data_model/19_dashboard_data_model.png)
+
+### Jury dashboard map
+
+| Jury dashboard | Rubric item | App page |
+| --- | --- | --- |
+| Dashboard 1 | A · Data Warehouse Design | Data model card |
+| Dashboard 2 | B · Snowflake Deployment | Snowflake |
+| Dashboard 3 | C · Supervised Learning Dataset | Data and leakage |
 
 ---
 
@@ -344,3 +395,11 @@ venv\Scripts\python.exe -m pytest tests -q
 | `17_dashboard_simulator.png` | Simulator page |
 | `18_galaxy_schema.png` | Galaxy schema diagram |
 | `19_dashboard_data_model.png` | Data model card page |
+| `20_dashboard_leakage_bar.png` | Leakage audit bar chart |
+| `21_dashboard_mobile_portfolio.png` | Mobile executive overview |
+| `22_dashboard_mobile_simulator.png` | Mobile simulator |
+| `23_clustering_metrics.png` | Clustering metric comparison |
+| `24_clustering_pca.png` | PCA cluster maps |
+| `25_clustering_default_rates.png` | Default rate by cluster |
+| `26_dashboard_segments.png` | Segments page |
+| `27_dashboard_snowflake.png` | Snowflake deployment page |

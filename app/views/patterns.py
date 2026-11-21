@@ -6,21 +6,15 @@ import streamlit as st
 
 from components.common import (
     ACCENT,
-    GOOD,
     INK,
-    METHOD_NAMES,
-    MUTED,
-    RISK,
-    cluster_map_figures,
-    cluster_rate_figure,
     grid,
+    kpi_row,
     load_features,
     load_output,
     note,
     page_header,
     parse_itemset,
     percent,
-    ref_rule,
     score_config,
     section,
     show,
@@ -176,108 +170,6 @@ def patterns_page() -> None:
         f"{len(filtered)} of {len(itemsets)} itemsets at support ≥ {threshold}%. "
         "Support counts the share of loans that contain the set."
     )
-
-    profiles = load_output("cluster_profiles.csv")
-    if profiles is not None and len(profiles):
-        section(
-            "Cluster comparison",
-            "K-medoids, AGNES (Ward) and DBSCAN on the same standardised behaviour space",
-        )
-        names = METHOD_NAMES
-        view = profiles.copy()
-        view["Method"] = view["method"].map(names).fillna(view["method"])
-        view["Segment"] = view["cluster"].map(lambda value: "noise" if value == -1 else str(value))
-        view["Loans"] = view["size"]
-        view["Share %"] = (view["size"] / loans * 100).round(1)
-        view["Default %"] = (view["default_rate"] * 100).round(1)
-        base_rate = float(features["target"].mean()) * 100
-        base_rule = ref_rule(base_rate, axis="y", color=MUTED, dash=(3, 3))
-        show(
-            (
-                base_rule
-                + alt.Chart(view)
-                .mark_circle(opacity=0.8)
-                .encode(
-                    x=alt.X("avg_balance:Q", title="Average balance (CZK)"),
-                    y=alt.Y("Default %:Q", title="Default rate (%)"),
-                    size=alt.Size(
-                        "Loans:Q",
-                        scale=alt.Scale(range=[60, 600], zero=False),
-                        title="Loans",
-                    ),
-                    color=alt.Color(
-                        "Method:N",
-                        scale=alt.Scale(
-                            domain=["K-medoids", "AGNES", "DBSCAN"],
-                            range=[ACCENT, GOOD, RISK],
-                        ),
-                        title=None,
-                    ),
-                    tooltip=[
-                        "Method",
-                        "Segment",
-                        "Loans",
-                        alt.Tooltip("Default %:Q", format=".1f"),
-                        alt.Tooltip("avg_balance:Q", format=",.0f"),
-                    ],
-                )
-            )
-            .properties(height=300)
-            .interactive()
-        )
-        grid(
-            view[
-                [
-                    "Method",
-                    "Segment",
-                    "Loans",
-                    "Share %",
-                    "Default %",
-                    "avg_amount",
-                    "avg_balance",
-                    "avg_age",
-                    "avg_n_txn",
-                ]
-            ].rename(
-                columns={
-                    "avg_amount": "Avg amount",
-                    "avg_balance": "Avg balance",
-                    "avg_age": "Avg age",
-                    "avg_n_txn": "Avg transactions",
-                }
-            ),
-            score_config("Avg amount", "Avg balance", places=0)
-            | score_config("Avg age", "Avg transactions", places=1),
-        )
-        worst = profiles.sort_values("default_rate", ascending=False).iloc[0]
-        worst_name = names.get(worst["method"], worst["method"])
-        worst_segment = "noise" if worst["cluster"] == -1 else f"segment {worst['cluster']}"
-        note(
-            f"The highest default rate is {worst['default_rate']:.1%} in the "
-            f"{worst_name} {worst_segment} ({worst['size']} loans). "
-            "DBSCAN isolates a high-risk noise group; K-medoids and AGNES split the core "
-            "book into broader behaviour bands.",
-            label="Reading it",
-        )
-
-        section("Default rate by cluster", "Red bars sit above the portfolio base rate")
-        show(cluster_rate_figure(profiles, features["target"].mean()))
-        st.caption(
-            "Each bar is one segment from the table. DBSCAN labels unassigned loans as noise."
-        )
-
-        labels = load_output("cluster_labels.csv")
-        if labels is not None and len(labels):
-            section("Cluster map", "PCA projection of the same standardised behaviour features")
-            columns = st.columns(3)
-            for column, (title, figure) in zip(columns, cluster_map_figures(features, labels)):
-                column.markdown(f"**{title}**")
-                with column:
-                    show(figure)
-            st.caption(
-                "Nearby points have similar pre-loan behaviour. PCA compresses the feature "
-                "space to two axes, so distances are approximate; exact numbers stay in the table."
-            )
 
 
 # ------------------------------------------------------------------ simulator

@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import duckdb
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -16,6 +17,29 @@ from tools.pattern_mining import main as build_patterns
 DB = LOCAL_DB
 FEATURE_SQL = ROOT / "sql" / "local" / "03_feature_mart.sql"
 FEATURES_CSV = ROOT / "data" / "features" / "loan_features.csv"
+
+
+def validate_feature_export(con: duckdb.DuckDBPyConnection) -> None:
+    """The CSV is what notebooks and Snowflake upload; it must match the warehouse."""
+    frame = pd.read_csv(FEATURES_CSV)
+    db = con.execute("SELECT * FROM analytics.loan_features ORDER BY loan_id").fetchdf()
+
+    extra = set(db.columns) - set(frame.columns)
+    missing = set(frame.columns) - set(db.columns)
+    if extra != {"date", "loan_date_id"} or missing != {"loan_date"}:
+        raise AssertionError(
+            f"feature export columns drifted: extra={sorted(extra)}, missing={sorted(missing)}"
+        )
+
+    expected = db.drop(columns=["date", "loan_date_id"]).assign(
+        loan_date=db["date"].astype("int64")
+    )
+    expected["parsed_date"] = pd.to_datetime(expected["parsed_date"])
+    frame["parsed_date"] = pd.to_datetime(frame["parsed_date"])
+    expected = expected[frame.columns]
+
+    pd.testing.assert_frame_equal(frame, expected, check_dtype=False)
+    print(f"feature CSV matches DB: {len(frame)} rows")
 
 
 def validate() -> None:
@@ -48,6 +72,11 @@ def validate() -> None:
         print(f"{label}: {value}")
         if not valid(value):
             failures.append(f"{label}: {value}")
+    try:
+        validate_feature_export(con)
+    except AssertionError as exc:
+        print(exc)
+        failures.append("feature CSV matches DB")
     con.close()
     if failures:
         raise SystemExit("Validation failed: " + ", ".join(failures))

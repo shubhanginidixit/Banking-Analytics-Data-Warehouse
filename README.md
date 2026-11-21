@@ -166,11 +166,18 @@ The local DuckDB build is the default. To push the same data to Snowflake:
    Copy the returned `token_secret` into `SNOWFLAKE_PAT`. The loader uses the token first and skips
    MFA.
 3. Run `venv\Scripts\python.exe scripts\upload_to_snowflake.py`. With `SNOWFLAKE_PAT` set, no prompt
-   appears; otherwise enter the TOTP code when asked.
+   appears; otherwise enter the TOTP code when asked. The loader truncates each target table
+   before loading, so reruns do not append duplicates.
 4. Run `sql/snowflake/verify_load.sql` in Snowsight to compare row counts and preview the views.
 
+For a single authenticated session, `scripts/deploy_snowflake.py` does all three steps at once: it
+prompts for the 6-digit TOTP, then runs the DDL, uploads all 11 CSVs, and prints the verification
+counts. Run `venv\Scripts\python.exe scripts\deploy_snowflake.py`. This is the quickest option when
+MFA codes expire in 30 seconds.
+
 The target is warehouse `PBI_WH`, database `LOAN_DEFAULT_DW`, schemas
-`RAW` and `MART`. The loader writes to `RAW`.
+`RAW` and `MART`. Raw extracts go to `RAW`; feature, score, segment, risk, and
+cluster tables plus the reporting views go to `MART`.
 
 ### Hybrid Streamlit mode
 
@@ -182,11 +189,11 @@ DATA_SOURCE=snowflake
 SNOWFLAKE_PAT=<read-only-token>
 ```
 
-The four Snowflake-backed tables are `RAW.MART_LOAN_FEATURES`,
-`RAW.MART_MODEL_SCORES`, `RAW.MART_LOAN_SEGMENTS`, and
-`RAW.MART_LOAN_RISK`. Everything else falls back to `artifacts/` CSVs, and the
-Data model card stays on DuckDB because the galaxy-schema dimensions and facts
-are not uploaded.
+The six Snowflake-backed tables are `MART.MART_LOAN_FEATURES`,
+`MART.MART_MODEL_SCORES`, `MART.MART_LOAN_SEGMENTS`, `MART.MART_LOAN_RISK`,
+`MART.MART_CLUSTER_LABELS`, and `MART.MART_CLUSTERING_COMPARISON`. Everything
+else falls back to `artifacts/` CSVs, and the Data model card stays on DuckDB
+because the galaxy-schema dimensions and facts are not uploaded.
 
 For a read-only dashboard token, run this once as `ACCOUNTADMIN`:
 
@@ -195,11 +202,16 @@ CREATE ROLE IF NOT EXISTS DASHBOARD_READER;
 GRANT USAGE ON WAREHOUSE PBI_WH TO ROLE DASHBOARD_READER;
 GRANT USAGE ON DATABASE LOAN_DEFAULT_DW TO ROLE DASHBOARD_READER;
 GRANT USAGE ON SCHEMA LOAN_DEFAULT_DW.RAW TO ROLE DASHBOARD_READER;
-GRANT SELECT ON TABLE LOAN_DEFAULT_DW.RAW.MART_LOAN_FEATURES TO ROLE DASHBOARD_READER;
-GRANT SELECT ON TABLE LOAN_DEFAULT_DW.RAW.MART_MODEL_SCORES TO ROLE DASHBOARD_READER;
-GRANT SELECT ON TABLE LOAN_DEFAULT_DW.RAW.MART_LOAN_SEGMENTS TO ROLE DASHBOARD_READER;
-GRANT SELECT ON TABLE LOAN_DEFAULT_DW.RAW.MART_LOAN_RISK TO ROLE DASHBOARD_READER;
+GRANT USAGE ON SCHEMA LOAN_DEFAULT_DW.MART TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_LOAN_FEATURES TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_MODEL_SCORES TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_LOAN_SEGMENTS TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_LOAN_RISK TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_CLUSTER_LABELS TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_CLUSTERING_COMPARISON TO ROLE DASHBOARD_READER;
 GRANT SELECT ON TABLE LOAN_DEFAULT_DW.RAW.RAW_TRANS TO ROLE DASHBOARD_READER;
+GRANT SELECT ON VIEW LOAN_DEFAULT_DW.MART.V_LOAN_PERF TO ROLE DASHBOARD_READER;
+GRANT SELECT ON VIEW LOAN_DEFAULT_DW.MART.V_TRANS_MONTHLY TO ROLE DASHBOARD_READER;
 GRANT ROLE DASHBOARD_READER TO USER DHANUSHPILLAY;
 
 ALTER USER DHANUSHPILLAY ADD PROGRAMMATIC ACCESS TOKEN streamlit_dashboard

@@ -31,8 +31,8 @@ ANALYTICS_LAYER = {
     "advanced_metrics": "MLP and CBA metrics",
     "loan_segments": "KMeans loan segments",
     "segment_profiles": "KMeans segment profiles",
-    "cluster_labels": "K-medoids, AGNES, DBSCAN labels",
-    "cluster_profiles": "Cluster profiles",
+    "cluster_labels": "K-Means, K-medoids, AGNES, DBSCAN labels",
+    "cluster_profiles": "Cluster profiles for all four methods",
     "pattern_itemsets": "FP-Growth and Apriori itemsets",
     "pattern_rules": "Association rules",
     "cba_rules": "Classifier rules",
@@ -117,7 +117,7 @@ def data_model_page() -> None:
     facts = int(counts["table"].str.startswith("fact_").sum())
 
     page_header(
-        "Data model",
+        "Dashboard 1 · Data Warehouse Design",
         "A galaxy schema with two facts and one conformed date spine",
         "Kimball bottom-up design: dimensions carry descriptive context, facts carry the "
         "measurable events. Both facts share account, branch and date keys, so deposits and "

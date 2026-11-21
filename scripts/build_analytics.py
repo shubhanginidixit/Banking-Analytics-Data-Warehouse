@@ -27,6 +27,9 @@ TABLES = {
     "cba_rules": ARTIFACTS / "rules" / "cba_rules.csv",
     "cluster_labels": ARTIFACTS / "segments" / "cluster_labels.csv",
     "cluster_profiles": ARTIFACTS / "segments" / "cluster_profiles.csv",
+    "clustering_comparison": ARTIFACTS / "metrics" / "clustering_comparison.csv",
+    "clustering_tuning": ARTIFACTS / "metrics" / "clustering_tuning.csv",
+    "clustering_stability": ARTIFACTS / "metrics" / "clustering_stability.csv",
 }
 
 

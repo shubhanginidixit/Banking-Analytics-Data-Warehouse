@@ -1,7 +1,7 @@
 # Final deliverables
 
 - [Final report](Final_Report.md) — complete write-up with figures.
-- [Images](images/) — 22 diagrams, charts, and dashboard screenshots.
+- [Images](images/) — 27 diagrams, charts, and dashboard screenshots.
 
 ## Architecture and data model
 
@@ -50,6 +50,15 @@
 ### Segment scatter
 ![Segment scatter](images/patterns/11_segment_scatter.png)
 
+### Clustering metric comparison
+![Clustering metric comparison](images/clustering/23_clustering_metrics.png)
+
+### PCA cluster maps
+![PCA cluster maps](images/clustering/24_clustering_pca.png)
+
+### Cluster default rates
+![Cluster default rates](images/clustering/25_clustering_default_rates.png)
+
 ## Dashboard
 
 ### Executive overview
@@ -58,14 +67,29 @@
 ### Data and leakage
 ![Data and leakage](images/dashboard/16_dashboard_data_leakage.png)
 
+### Leakage audit
+![Leakage audit](images/dashboard/20_dashboard_leakage_bar.png)
+
 ### Models
 ![Models](images/dashboard/14_dashboard_models.png)
 
 ### Patterns
 ![Patterns](images/dashboard/15_dashboard_patterns.png)
 
+### Segments
+![Segments](images/dashboard/26_dashboard_segments.png)
+
 ### Simulator
 ![Simulator](images/dashboard/17_dashboard_simulator.png)
+
+### Snowflake deployment
+![Snowflake deployment](images/dashboard/27_dashboard_snowflake.png)
+
+### Mobile executive overview
+![Mobile executive overview](images/dashboard/21_dashboard_mobile_portfolio.png)
+
+### Mobile simulator
+![Mobile simulator](images/dashboard/22_dashboard_mobile_simulator.png)
 
 ### Data model card
 ![Data model card](images/data_model/19_dashboard_data_model.png)

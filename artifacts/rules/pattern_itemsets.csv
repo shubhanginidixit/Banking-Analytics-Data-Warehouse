@@ -5,79 +5,79 @@ support,itemsets,method
 0.9369501466275659,frozenset({'high_amount'}),apriori
 0.039589442815249266,frozenset({'negative_balance'}),apriori
 0.11143695014662756,frozenset({'default'}),apriori
-0.9956011730205279,"frozenset({'type_VYDAJ', 'type_PRIJEM'})",apriori
+0.9956011730205279,"frozenset({'type_PRIJEM', 'type_VYDAJ'})",apriori
 0.5410557184750733,"frozenset({'type_PRIJEM', 'type_VYBER'})",apriori
 0.9369501466275659,"frozenset({'type_PRIJEM', 'high_amount'})",apriori
 0.039589442815249266,"frozenset({'type_PRIJEM', 'negative_balance'})",apriori
 0.11143695014662756,"frozenset({'type_PRIJEM', 'default'})",apriori
 0.5410557184750733,"frozenset({'type_VYDAJ', 'type_VYBER'})",apriori
-0.9369501466275659,"frozenset({'type_VYDAJ', 'high_amount'})",apriori
-0.039589442815249266,"frozenset({'type_VYDAJ', 'negative_balance'})",apriori
-0.10703812316715543,"frozenset({'type_VYDAJ', 'default'})",apriori
-0.5410557184750733,"frozenset({'type_VYBER', 'high_amount'})",apriori
-0.03372434017595308,"frozenset({'type_VYBER', 'negative_balance'})",apriori
-0.07038123167155426,"frozenset({'type_VYBER', 'default'})",apriori
-0.03812316715542522,"frozenset({'negative_balance', 'high_amount'})",apriori
+0.9369501466275659,"frozenset({'high_amount', 'type_VYDAJ'})",apriori
+0.039589442815249266,"frozenset({'negative_balance', 'type_VYDAJ'})",apriori
+0.10703812316715543,"frozenset({'default', 'type_VYDAJ'})",apriori
+0.5410557184750733,"frozenset({'high_amount', 'type_VYBER'})",apriori
+0.03372434017595308,"frozenset({'negative_balance', 'type_VYBER'})",apriori
+0.07038123167155426,"frozenset({'default', 'type_VYBER'})",apriori
+0.03812316715542522,"frozenset({'high_amount', 'negative_balance'})",apriori
 0.10117302052785923,"frozenset({'high_amount', 'default'})",apriori
 0.039589442815249266,"frozenset({'negative_balance', 'default'})",apriori
-0.5410557184750733,"frozenset({'type_VYDAJ', 'type_PRIJEM', 'type_VYBER'})",apriori
-0.9369501466275659,"frozenset({'type_VYDAJ', 'type_PRIJEM', 'high_amount'})",apriori
-0.039589442815249266,"frozenset({'type_VYDAJ', 'type_PRIJEM', 'negative_balance'})",apriori
-0.10703812316715543,"frozenset({'type_VYDAJ', 'type_PRIJEM', 'default'})",apriori
+0.5410557184750733,"frozenset({'type_PRIJEM', 'type_VYDAJ', 'type_VYBER'})",apriori
+0.9369501466275659,"frozenset({'type_PRIJEM', 'high_amount', 'type_VYDAJ'})",apriori
+0.039589442815249266,"frozenset({'type_PRIJEM', 'negative_balance', 'type_VYDAJ'})",apriori
+0.10703812316715543,"frozenset({'type_PRIJEM', 'default', 'type_VYDAJ'})",apriori
 0.5410557184750733,"frozenset({'type_PRIJEM', 'high_amount', 'type_VYBER'})",apriori
 0.03372434017595308,"frozenset({'type_PRIJEM', 'negative_balance', 'type_VYBER'})",apriori
 0.07038123167155426,"frozenset({'type_PRIJEM', 'default', 'type_VYBER'})",apriori
-0.03812316715542522,"frozenset({'type_PRIJEM', 'negative_balance', 'high_amount'})",apriori
+0.03812316715542522,"frozenset({'type_PRIJEM', 'high_amount', 'negative_balance'})",apriori
 0.10117302052785923,"frozenset({'type_PRIJEM', 'high_amount', 'default'})",apriori
 0.039589442815249266,"frozenset({'type_PRIJEM', 'negative_balance', 'default'})",apriori
-0.5410557184750733,"frozenset({'type_VYDAJ', 'type_VYBER', 'high_amount'})",apriori
-0.03372434017595308,"frozenset({'type_VYDAJ', 'type_VYBER', 'negative_balance'})",apriori
-0.07038123167155426,"frozenset({'type_VYDAJ', 'type_VYBER', 'default'})",apriori
-0.03812316715542522,"frozenset({'type_VYDAJ', 'negative_balance', 'high_amount'})",apriori
-0.10117302052785923,"frozenset({'type_VYDAJ', 'high_amount', 'default'})",apriori
-0.039589442815249266,"frozenset({'type_VYDAJ', 'negative_balance', 'default'})",apriori
-0.03372434017595308,"frozenset({'type_VYBER', 'negative_balance', 'high_amount'})",apriori
-0.07038123167155426,"frozenset({'type_VYBER', 'high_amount', 'default'})",apriori
-0.03372434017595308,"frozenset({'type_VYBER', 'negative_balance', 'default'})",apriori
-0.03812316715542522,"frozenset({'negative_balance', 'high_amount', 'default'})",apriori
+0.5410557184750733,"frozenset({'high_amount', 'type_VYDAJ', 'type_VYBER'})",apriori
+0.03372434017595308,"frozenset({'negative_balance', 'type_VYDAJ', 'type_VYBER'})",apriori
+0.07038123167155426,"frozenset({'default', 'type_VYDAJ', 'type_VYBER'})",apriori
+0.03812316715542522,"frozenset({'high_amount', 'type_VYDAJ', 'negative_balance'})",apriori
+0.10117302052785923,"frozenset({'default', 'high_amount', 'type_VYDAJ'})",apriori
+0.039589442815249266,"frozenset({'default', 'negative_balance', 'type_VYDAJ'})",apriori
+0.03372434017595308,"frozenset({'high_amount', 'negative_balance', 'type_VYBER'})",apriori
+0.07038123167155426,"frozenset({'high_amount', 'default', 'type_VYBER'})",apriori
+0.03372434017595308,"frozenset({'negative_balance', 'default', 'type_VYBER'})",apriori
+0.03812316715542522,"frozenset({'high_amount', 'default', 'negative_balance'})",apriori
 1.0,frozenset({'type_PRIJEM'}),fpgrowth
 0.9956011730205279,frozenset({'type_VYDAJ'}),fpgrowth
 0.9369501466275659,frozenset({'high_amount'}),fpgrowth
 0.5410557184750733,frozenset({'type_VYBER'}),fpgrowth
 0.11143695014662756,frozenset({'default'}),fpgrowth
 0.039589442815249266,frozenset({'negative_balance'}),fpgrowth
-0.9956011730205279,"frozenset({'type_VYDAJ', 'type_PRIJEM'})",fpgrowth
-0.9369501466275659,"frozenset({'type_VYDAJ', 'high_amount'})",fpgrowth
+0.9956011730205279,"frozenset({'type_PRIJEM', 'type_VYDAJ'})",fpgrowth
+0.9369501466275659,"frozenset({'high_amount', 'type_VYDAJ'})",fpgrowth
 0.9369501466275659,"frozenset({'type_PRIJEM', 'high_amount'})",fpgrowth
-0.9369501466275659,"frozenset({'type_VYDAJ', 'type_PRIJEM', 'high_amount'})",fpgrowth
-0.5410557184750733,"frozenset({'type_VYBER', 'high_amount'})",fpgrowth
+0.9369501466275659,"frozenset({'type_PRIJEM', 'high_amount', 'type_VYDAJ'})",fpgrowth
+0.5410557184750733,"frozenset({'high_amount', 'type_VYBER'})",fpgrowth
 0.5410557184750733,"frozenset({'type_VYDAJ', 'type_VYBER'})",fpgrowth
 0.5410557184750733,"frozenset({'type_PRIJEM', 'type_VYBER'})",fpgrowth
-0.5410557184750733,"frozenset({'type_VYDAJ', 'type_VYBER', 'high_amount'})",fpgrowth
+0.5410557184750733,"frozenset({'high_amount', 'type_VYDAJ', 'type_VYBER'})",fpgrowth
 0.5410557184750733,"frozenset({'type_PRIJEM', 'high_amount', 'type_VYBER'})",fpgrowth
-0.5410557184750733,"frozenset({'type_VYDAJ', 'type_PRIJEM', 'type_VYBER'})",fpgrowth
+0.5410557184750733,"frozenset({'type_PRIJEM', 'type_VYDAJ', 'type_VYBER'})",fpgrowth
 0.11143695014662756,"frozenset({'type_PRIJEM', 'default'})",fpgrowth
-0.10703812316715543,"frozenset({'type_VYDAJ', 'default'})",fpgrowth
+0.10703812316715543,"frozenset({'default', 'type_VYDAJ'})",fpgrowth
 0.10117302052785923,"frozenset({'high_amount', 'default'})",fpgrowth
-0.07038123167155426,"frozenset({'type_VYBER', 'default'})",fpgrowth
-0.10703812316715543,"frozenset({'type_VYDAJ', 'type_PRIJEM', 'default'})",fpgrowth
+0.07038123167155426,"frozenset({'default', 'type_VYBER'})",fpgrowth
+0.10703812316715543,"frozenset({'type_PRIJEM', 'default', 'type_VYDAJ'})",fpgrowth
 0.10117302052785923,"frozenset({'type_PRIJEM', 'high_amount', 'default'})",fpgrowth
 0.07038123167155426,"frozenset({'type_PRIJEM', 'default', 'type_VYBER'})",fpgrowth
-0.10117302052785923,"frozenset({'type_VYDAJ', 'high_amount', 'default'})",fpgrowth
-0.07038123167155426,"frozenset({'type_VYDAJ', 'type_VYBER', 'default'})",fpgrowth
-0.07038123167155426,"frozenset({'type_VYBER', 'high_amount', 'default'})",fpgrowth
+0.10117302052785923,"frozenset({'default', 'high_amount', 'type_VYDAJ'})",fpgrowth
+0.07038123167155426,"frozenset({'default', 'type_VYDAJ', 'type_VYBER'})",fpgrowth
+0.07038123167155426,"frozenset({'high_amount', 'default', 'type_VYBER'})",fpgrowth
 0.039589442815249266,"frozenset({'negative_balance', 'default'})",fpgrowth
-0.039589442815249266,"frozenset({'type_VYDAJ', 'negative_balance'})",fpgrowth
+0.039589442815249266,"frozenset({'negative_balance', 'type_VYDAJ'})",fpgrowth
 0.039589442815249266,"frozenset({'type_PRIJEM', 'negative_balance'})",fpgrowth
-0.03812316715542522,"frozenset({'negative_balance', 'high_amount'})",fpgrowth
-0.03372434017595308,"frozenset({'type_VYBER', 'negative_balance'})",fpgrowth
-0.039589442815249266,"frozenset({'type_VYDAJ', 'negative_balance', 'default'})",fpgrowth
+0.03812316715542522,"frozenset({'high_amount', 'negative_balance'})",fpgrowth
+0.03372434017595308,"frozenset({'negative_balance', 'type_VYBER'})",fpgrowth
+0.039589442815249266,"frozenset({'default', 'negative_balance', 'type_VYDAJ'})",fpgrowth
 0.039589442815249266,"frozenset({'type_PRIJEM', 'negative_balance', 'default'})",fpgrowth
-0.03812316715542522,"frozenset({'negative_balance', 'high_amount', 'default'})",fpgrowth
-0.03372434017595308,"frozenset({'type_VYBER', 'negative_balance', 'default'})",fpgrowth
-0.039589442815249266,"frozenset({'type_VYDAJ', 'type_PRIJEM', 'negative_balance'})",fpgrowth
-0.03812316715542522,"frozenset({'type_VYDAJ', 'negative_balance', 'high_amount'})",fpgrowth
-0.03372434017595308,"frozenset({'type_VYDAJ', 'type_VYBER', 'negative_balance'})",fpgrowth
-0.03812316715542522,"frozenset({'type_PRIJEM', 'negative_balance', 'high_amount'})",fpgrowth
+0.03812316715542522,"frozenset({'high_amount', 'default', 'negative_balance'})",fpgrowth
+0.03372434017595308,"frozenset({'negative_balance', 'default', 'type_VYBER'})",fpgrowth
+0.039589442815249266,"frozenset({'type_PRIJEM', 'negative_balance', 'type_VYDAJ'})",fpgrowth
+0.03812316715542522,"frozenset({'high_amount', 'type_VYDAJ', 'negative_balance'})",fpgrowth
+0.03372434017595308,"frozenset({'negative_balance', 'type_VYDAJ', 'type_VYBER'})",fpgrowth
+0.03812316715542522,"frozenset({'type_PRIJEM', 'high_amount', 'negative_balance'})",fpgrowth
 0.03372434017595308,"frozenset({'type_PRIJEM', 'negative_balance', 'type_VYBER'})",fpgrowth
-0.03372434017595308,"frozenset({'type_VYBER', 'negative_balance', 'high_amount'})",fpgrowth
+0.03372434017595308,"frozenset({'high_amount', 'negative_balance', 'type_VYBER'})",fpgrowth
