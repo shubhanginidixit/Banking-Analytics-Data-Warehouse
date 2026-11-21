@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: banking_dw_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dw_user
+      POSTGRES_PASSWORD: dw_pass
+      POSTGRES_DB: banking_dw
+    ports:
+      - "5432:5432"
+    volumes:
+      - banking_dw_data:/var/lib/postgresql/data
+
+volumes:
+  banking_dw_data:
