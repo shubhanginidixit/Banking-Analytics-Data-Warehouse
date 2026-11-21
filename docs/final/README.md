@@ -1,7 +1,7 @@
 # Final deliverables
 
 - [Final report](Final_Report.md) — complete write-up with figures.
-- [Images](images/) — 19 diagrams, charts, and dashboard screenshots.
+- [Images](images/) — 22 diagrams, charts, and dashboard screenshots.
 
 ## Architecture and data model
 

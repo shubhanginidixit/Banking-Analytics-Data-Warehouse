@@ -22,7 +22,5 @@ data/clean/
 # Notes and scratch output
 presentation/
 
-# Deliverable folders handled outside the app build
-PPT/
-reports/
+# Power BI dashboard deliverable
 powerbi/
