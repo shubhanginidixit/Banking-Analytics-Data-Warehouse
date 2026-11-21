@@ -170,6 +170,11 @@ The local DuckDB build is the default. To push the same data to Snowflake:
    before loading, so reruns do not append duplicates.
 4. Run `sql/snowflake/verify_load.sql` in Snowsight to compare row counts and preview the views.
 
+For a single authenticated session, `scripts/deploy_snowflake.py` does all three steps at once: it
+prompts for the 6-digit TOTP, then runs the DDL, uploads all 11 CSVs, and prints the verification
+counts. Run `venv\Scripts\python.exe scripts\deploy_snowflake.py`. This is the quickest option when
+MFA codes expire in 30 seconds.
+
 The target is warehouse `PBI_WH`, database `LOAN_DEFAULT_DW`, schemas
 `RAW` and `MART`. Raw extracts go to `RAW`; feature, score, segment, risk, and
 cluster tables plus the reporting views go to `MART`.

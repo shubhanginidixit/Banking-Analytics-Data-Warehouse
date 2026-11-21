@@ -72,14 +72,14 @@ JOIN LOAN_DEFAULT_DW.MART.MART_LOAN_SEGMENTS g USING (loan_id);
 
 CREATE OR REPLACE VIEW LOAN_DEFAULT_DW.MART.V_TRANS_MONTHLY AS
 SELECT t.account_id,
-       DATE_TRUNC('month', TO_DATE(t.trans_date, 'YYMMDD')) AS ym,
+       DATE_TRUNC('month', TO_DATE(t.trans_date::VARCHAR, 'YYMMDD')) AS ym,
        t.type AS txn_type, COUNT(*) AS n, SUM(t.amount) AS total_amount
 FROM LOAN_DEFAULT_DW.RAW.RAW_TRANS t
 WHERE EXISTS (
     SELECT 1
     FROM LOAN_DEFAULT_DW.RAW.RAW_LOAN l
     WHERE l.account_id = t.account_id
-      AND TO_DATE(t.trans_date, 'YYMMDD') < TO_DATE(l.loan_date, 'YYMMDD')
+      AND TO_DATE(t.trans_date::VARCHAR, 'YYMMDD') < TO_DATE(l.loan_date::VARCHAR, 'YYMMDD')
 )
 GROUP BY 1, 2, 3;
 
