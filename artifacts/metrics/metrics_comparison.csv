@@ -1,0 +1,13 @@
+model,setting,accuracy,precision,recall,f1,average_precision,roc_auc
+RandomForest,baseline,0.924,0.875,0.368,0.519,0.582,0.856
+DecisionTree,baseline,0.895,0.529,0.474,0.5,0.309,0.711
+GradientBoosting,baseline,0.912,0.7,0.368,0.483,0.583,0.816
+SVM,baseline,0.918,0.857,0.316,0.462,0.551,0.771
+NaiveBayes,baseline,0.807,0.15,0.158,0.154,0.171,0.634
+KNN,baseline,0.895,1.0,0.053,0.1,0.22,0.668
+GradientBoosting,smote,0.889,0.5,0.421,0.457,0.495,0.741
+DecisionTree,smote,0.883,0.471,0.421,0.444,0.262,0.681
+RandomForest,smote,0.895,0.538,0.368,0.438,0.532,0.826
+SVM,smote,0.854,0.375,0.474,0.419,0.385,0.726
+KNN,smote,0.743,0.195,0.421,0.267,0.156,0.645
+NaiveBayes,smote,0.591,0.108,0.368,0.167,0.155,0.563

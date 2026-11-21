@@ -1,0 +1,20 @@
+{
+  "model": "Capacity-aware Gradient Boosting",
+  "base_model": "Tuned Gradient Boosting",
+  "threshold": 0.4200000000000002,
+  "threshold_selection": "median of nested 5-fold inner-CV thresholds",
+  "capacity_features": [
+    "loan_to_avg_balance",
+    "loan_to_balance_at_loan",
+    "payment_to_avg_balance",
+    "negative_min_balance"
+  ],
+  "model_parameters": {
+    "n_estimators": 300,
+    "learning_rate": 0.05,
+    "max_depth": 1,
+    "subsample": 0.7,
+    "random_state": 42
+  },
+  "warning": "This artifact is an experimental model version; compare it with the current headline model before replacing production selection."
+}

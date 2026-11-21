@@ -2,7 +2,25 @@ venv/
 .env
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.playwright-mcp/
+.ruff_cache/
+.opencode/
+out.txt
+*.log
+Thumbs.db
+.DS_Store
 
+# Local warehouse and generated snapshots
+data/banking_dw.duckdb
+data/banking_dw.duckdb.wal
 data/clean/
-main_tex
-presentation
+
+# Notes and scratch output
+presentation/
+
+# Power BI dashboard deliverable
+powerbi/

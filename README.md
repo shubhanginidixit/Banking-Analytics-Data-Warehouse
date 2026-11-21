@@ -1,176 +1,230 @@
 # Banking Analytics Data Warehouse
 
-Modern banking institutions generate massive amounts of transactional and demographic data daily. However, operational databases (OLTP) are optimized for fast inserts and updates, making them highly inefficient for complex analytical queries. 
+A single project for the two end-semester submissions: a Kimball-style banking
+data warehouse and a loan-default analytics layer built on top of it. Raw PKDD'99
+records are transformed into a galaxy schema, turned into a leakage-safe feature
+mart, and exposed through a Streamlit review app.
 
-The objective of this project is to **create a Banking Analytics Data Warehouse** by integrating customer, account, loan, and transaction information. The goal is to design a multidimensional dimensional model (Galaxy schema) that supports rapid Business Intelligence (BI) reporting, enabling management to perform advanced OLAP analysis on branch-wise deposits, loan distribution, customer segmentation, and temporal revenue trends.
+![status](https://img.shields.io/badge/local%20build-passing-2f6b4f)
+![python](https://img.shields.io/badge/python-3.13-1f4e6b)
 
----
+## Quick start
 
-## Dataset
+```powershell
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
 
-This project uses the [PKDD'99 Financial Dataset](https://www.kaggle.com/datasets/siavashraz/1999-czech-financial-dataset) — real anonymized banking data from a Czech bank (1993–1998) containing 4,500 accounts, 5,369 clients, and ~1M transactions. Place the CSV files in the `data/` directory before running the ETL pipeline.
+copy .env.example .env
+python scripts\build_local.py
+venv\Scripts\streamlit run app\streamlit_app.py
+```
 
----
+`build_local.py` runs the whole chain in one command: raw CSV extract, dimensions
+and facts, DuckDB load, SQL feature mart, MLP/CBA training, cluster discovery,
+the capacity-aware challenger, pattern mining, saved analytics outputs, and
+validation counts. The app opens at `http://localhost:8501`.
 
-## Data Warehouse Architecture
+The notebooks need the extra plotting and resampling packages:
+`pip install -r requirements-notebooks.txt`.
 
-The architecture follows a standard Kimball Bottom-Up methodology, extracting raw historical data (based on the real-world [PKDD'99 Financial Dataset](https://www.kaggle.com/datasets/siavashraz/1999-czech-financial-dataset)), transforming it via Python, and loading it into a PostgreSQL relational database structured for OLAP.
+## Local architecture
+
+Local runs use DuckDB, a single-file analytical database. Docker/Postgres is
+optional; on this machine WSL2 virtualization is unavailable, so DuckDB is the
+default backend. The table names and SQL stay close to the planned Snowflake
+warehouse, and `sql/snowflake/` already holds the cloud DDL.
 
 ```mermaid
 graph LR
-    %% Premium styling with high-contrast font colors
-    classDef source fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc
-    classDef process fill:#0284c7,stroke:#bae6fd,stroke-width:2px,color:#ffffff
-    classDef database fill:#3730a3,stroke:#c7d2fe,stroke-width:2px,color:#ffffff
-    classDef bi fill:#d97706,stroke:#fde68a,stroke-width:2px,color:#ffffff
-
-    A[Raw CSV Data]:::source -->|Python / Pandas| B(ETL Processing):::process
-    B -->|SQLAlchemy| C[(PostgreSQL Data Warehouse)]:::database
-    C -->|DirectQuery / Import| D[Power BI Dashboard]:::bi
+    A[data/*.csv] -->|pandas ETL| B[(DuckDB mart)]
+    B -->|sql/local/03_feature_mart.sql| C[(analytics.loan_features)]
+    B -->|galaxy-schema tables| D[Streamlit app]
+    C --> E[Models, segments, rules]
+    E --> F[(artifacts + analytics tables)]
+    F --> D
 ```
 
----
+- Warehouse file: `data/banking_dw.duckdb`
+- Schemas: `mart` (galaxy schema) and `analytics` (features, scores, segments, rules)
+- CSV snapshots: `data/clean/`
+- Saved model and analysis outputs: `artifacts/`
 
-## Dimensional Modeling (Galaxy Schema)
+## Data model
 
-To accommodate both transaction metrics and loan metrics, a **Galaxy Schema** (a schema with multiple Fact tables sharing conformed dimensions) was implemented.
-
-### Dimensions (Context)
-- `dim_date`: Conformed dimension for time-series analysis (Year, Quarter, Month, Day, Weekend flags).
-- `dim_branch`: Geographic and organizational hierarchy (Branch Name, City, Region).
-- `dim_customer`: Demographic data (Age, Gender, Age Group, Customer Segment).
-- `dim_account`: Account metadata (Type, Open Date, Status).
-- `dim_loan_type`: Loan categorizations.
-
-### Facts (Measurements)
-- `fact_transactions`: Contains over 1 million rows tracking every deposit and withdrawal event.
-- `fact_loans`: Tracks disbursed loans, amounts, interest rates, and status (Active/Closed/Defaulted).
+The galaxy schema follows Kimball bottom-up design. Two fact tables share conformed
+dimensions, so each fact forms a star and the pair forms a galaxy.
 
 ```mermaid
-classDiagram
-    direction BT
-    
-    %% Fact Tables (Measurements)
-    class fact_transactions {
-        bigint transaction_id [PK]
-        numeric amount
-        varchar transaction_type
-    }
-    
-    class fact_loans {
-        int loan_id [PK]
-        numeric amount
-        numeric interest_rate
-        varchar status
-    }
-    
-    %% Dimension Tables (Context)
-    class dim_date {
-        int date_id [PK]
-        date full_date
-        int year
-        int quarter
-        varchar month_name
-    }
-    
-    class dim_branch {
-        int branch_id [PK]
-        varchar branch_name
-        varchar city
-        varchar region
-    }
-    
-    class dim_customer {
-        int customer_id [PK]
-        varchar first_name
-        varchar last_name
-        varchar age_group
-        varchar customer_segment
-    }
-    
-    class dim_account {
-        int account_id [PK]
-        varchar account_type
-    }
-    
-    class dim_loan_type {
-        int loan_type_id [PK]
-        varchar loan_type_name
-    }
+graph LR
+    dim_date[dim_date<br/>2,191 days]
+    dim_branch[dim_branch<br/>77 branches]
+    dim_customer[dim_customer<br/>5,369 clients]
+    dim_account[dim_account<br/>4,500 accounts]
+    dim_loan_type[dim_loan_type<br/>1 unknown member]
 
-    %% Relationships (Arranged to minimize crossing lines)
-    dim_date "1" <-- "*" fact_transactions : date_id
-    dim_account "1" <-- "*" fact_transactions : account_id
-    dim_branch "1" <-- "*" fact_transactions : branch_id
-    
-    dim_loan_type "1" <-- "*" fact_loans : loan_type_id
-    dim_customer "1" <-- "*" fact_loans : customer_id
-    dim_branch "1" <-- "*" fact_loans : branch_id
-    dim_date "1" <-- "*" fact_loans : date_id
-    
-    dim_customer "1" <-- "*" dim_account : customer_id
+    fact_loans[fact_loans<br/>682 loans]
+    fact_transactions[fact_transactions<br/>1,056,320 transactions]
 
-    %% Aesthetic Premium Styling
-    %% Facts: Deep Violet background with vibrant Purple border
-    style fact_transactions fill:#2e1065,stroke:#8b5cf6,stroke-width:2px,color:#ddd6fe
-    style fact_loans fill:#2e1065,stroke:#8b5cf6,stroke-width:2px,color:#ddd6fe
-    
-    %% Dimensions: Deep Cyan background with vibrant Cyan border
-    style dim_date fill:#083344,stroke:#06b6d4,stroke-width:2px,color:#cffafe
-    style dim_branch fill:#083344,stroke:#06b6d4,stroke-width:2px,color:#cffafe
-    style dim_customer fill:#083344,stroke:#06b6d4,stroke-width:2px,color:#cffafe
-    style dim_account fill:#083344,stroke:#06b6d4,stroke-width:2px,color:#cffafe
-    style dim_loan_type fill:#083344,stroke:#06b6d4,stroke-width:2px,color:#cffafe
+    dim_customer -->|customer_id| dim_account
+    dim_branch -->|home_branch_id| dim_customer
+    dim_account -->|account_id| fact_loans
+    dim_customer -->|customer_id| fact_loans
+    dim_branch -->|branch_id| fact_loans
+    dim_loan_type -->|loan_type_id| fact_loans
+    dim_date -->|date_id| fact_loans
+    dim_account -->|account_id| fact_transactions
+    dim_branch -->|branch_id| fact_transactions
+    dim_date -->|date_id| fact_transactions
+
+    classDef fact fill:#1f4e6b,color:#fff,stroke:#1f4e6b;
+    classDef dim fill:#fbfaf7,color:#191b1f,stroke:#e4e1d8;
+    class fact_loans,fact_transactions fact;
+    class dim_date,dim_branch,dim_customer,dim_account,dim_loan_type dim;
 ```
 
----
+PKDD'99 has no loan product or interest rate, so `dim_loan_type` has one explicit
+unknown member and `fact_loans.interest_rate` stays null rather than inventing a
+rate. Duplicate account holders are kept as separate client rows; loan rows use
+the account owner with the largest disbursement share.
 
-## Data Cube Design & OLAP Queries
+## Analytics
 
-A Data Cube was designed to perform multidimensional analysis across three core axes. By navigating this cube, we can instantly slice and dice transaction amounts.
+- Six core classifiers compared under repeated cross-validation, with and without
+  SMOTE: decision tree, Naive Bayes, random forest, SVM, KNN, and gradient
+  boosting.
+- Tuned gradient boosting is the current review model: F1 0.571, average
+  precision 0.654, ROC AUC 0.864 on out-of-fold scores.
+- Two additional models: an MLP reaches F1 0.439 / AUC 0.750, and a
+  classification-rule learner (CBA) reaches precision 1.00 with recall 0.355
+  (F1 0.524). The CBA rules all key off a negative minimum balance.
+- KMeans (k=2) behaviour segments, plus k-medoids, AGNES (Ward), and DBSCAN
+  compared side by side. The highest-risk group is DBSCAN noise at a 21.5%
+  default rate, against an 11.1% base rate.
+- FP-Growth and Apriori over pre-loan behaviour baskets. The strongest rule,
+  `negative_balance -> default`, covers 27 loans with confidence 1.00 and lift
+  8.97 against the 11.1% base rate.
+- Every behavioural feature uses only transactions strictly before the loan date.
+  `python scripts\build_local.py` prints `features with post-loan rows: 0`.
 
-![Data Cube Design](docs/data_cube_v2.svg)
+## Streamlit app
 
-All requirements for OLAP operations have been successfully fulfilled in `sql/olap_queries.sql`, which contains **12 distinct analytical queries**:
-- **Roll-up:** Aggregates deposits dynamically from Month -> Quarter -> Year.
-- **Drill-down:** Steps down from Region -> City -> Branch.
-- **Slice & Dice:** Isolates specific quarters, regions, and loan types.
-- **Data Cube:** Leverages the `GROUP BY CUBE` SQL function to generate multidimensional sub-totals and grand totals for transactions across all combinations of branch regions and transaction types.
+| Page | What it shows |
+|---|---|
+| Executive overview | Cutoff slider, stacked score distribution by observed outcome, gains curve, precision/recall trade-off across 5–90%, default rate by balance quintile, segment scatter, exposure |
+| Data & leakage | Galaxy-table row-count dot plot, per-loan used/excluded transaction bars, feature provenance, quality checks |
+| Models | Metric-aware repeated-CV mean ±1 SD dot plot, leaderboard, held-out heatmap, ROC/PR curves, confusion matrix, tuning chart, challenger dumbbell |
+| Patterns | Frequent itemsets, default rules, CBA coverage bars with covered-loan counts, itemset support bars, cluster scatter with base-rate line, PCA maps |
+| Simulator | What-if scoring with the saved gradient-boosting pipeline, portfolio score distribution, one-at-a-time drivers |
+| Data model card | Galaxy schema diagram, analytics row-count chart, relationships, column dictionary |
 
-The final deliverable is an interactive **Power BI dashboard**, successfully connected to the PostgreSQL instance to render visual analytics on the PKDD dataset.
+Charts are chosen by the question: a histogram for the score distribution, lines for gains,
+ROC, PR, and cutoff trade-offs, dot plots for repeated-CV means with uncertainty and for
+table row counts, heatmaps for matrices, scatter or bubble charts for relationships,
+stacked bars for outcome composition, a dumbbell for the paired challenger comparison,
+and Graphviz for the schema. Every chart is Altair and reacts to the page controls —
+cutoff, rank metric, resampling arm, variant, support threshold, segment, and simulator
+inputs — with hover, zoom, and pan in the browser. Data comes from DuckDB tables and saved
+artifacts, with CSV snapshots as a fallback. The schema diagram is rendered with Graphviz.
 
----
+## Repository layout
 
-## Setup & Execution Instructions
-
-### Prerequisites
-- **VS Code** + extensions: `Python`, `Docker`, and `SQLTools`
-- **Docker Desktop** (runs Postgres in a container)
-- **Python 3.10+**
-- **Power BI Desktop** (for the final dashboard)
-
-### 1. Start the Database
-Spin up the PostgreSQL data warehouse using Docker:
-```bash
-docker compose up -d
+```text
+app/            Streamlit app and DuckDB access
+artifacts/      Saved models, metrics, segments, rules, figures
+data/           Raw CSVs, DuckDB file, clean snapshots
+docs/           Final report and figures
+notebooks/      Preprocessing, features, EDA, modelling, segmentation, clustering comparison
+scripts/        ETL, local build, analytics load, Snowflake upload
+sql/            local/, snowflake/
+tests/          ETL and local-database checks
+tools/          Capacity model and pattern mining
 ```
 
-### 2. Create the Schema
-Connect to the database (`localhost:5432`, user: `dw_user`, pass: `dw_pass`) and run the schema file:
-```bash
-docker exec -i banking_dw_postgres psql -U dw_user -d banking_dw < sql/schema.sql
+## Tests
+
+```powershell
+venv\Scripts\python.exe -m pytest tests -q
 ```
 
-### 3. Run the ETL Pipeline
-Set up your Python environment and load the real dataset into the data warehouse:
-```bash
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python scripts/etl_pipeline.py
+The suite checks ETL transforms, mart and feature-mart consistency, the absence
+of post-loan rows, gender mapping, and analytics table sizes, including the MLP,
+CBA, and cluster outputs.
+
+## Snowflake
+
+The local DuckDB build is the default. To push the same data to Snowflake:
+
+1. Run `sql/snowflake/ddl_snowflake.sql` in Snowsight as `ACCOUNTADMIN`.
+2. Copy `.env.example` to `.env` and fill in the `SNOWFLAKE_*` values. Either set `SNOWFLAKE_PASSWORD`
+   (the loader prompts for a 6-digit TOTP if MFA is enabled) or create a programmatic access token:
+   ```sql
+   ALTER USER DHANUSHPILLAY ADD PROGRAMMATIC ACCESS TOKEN banking_dw_loader
+     ROLE_RESTRICTION = 'ACCOUNTADMIN'
+     DAYS_TO_EXPIRY = 1;
+   ```
+   Copy the returned `token_secret` into `SNOWFLAKE_PAT`. The loader uses the token first and skips
+   MFA.
+3. Run `venv\Scripts\python.exe scripts\upload_to_snowflake.py`. With `SNOWFLAKE_PAT` set, no prompt
+   appears; otherwise enter the TOTP code when asked. The loader truncates each target table
+   before loading, so reruns do not append duplicates.
+4. Run `sql/snowflake/verify_load.sql` in Snowsight to compare row counts and preview the views.
+
+For a single authenticated session, `scripts/deploy_snowflake.py` does all three steps at once: it
+prompts for the 6-digit TOTP, then runs the DDL, uploads all 11 CSVs, and prints the verification
+counts. Run `venv\Scripts\python.exe scripts\deploy_snowflake.py`. This is the quickest option when
+MFA codes expire in 30 seconds.
+
+The target is warehouse `PBI_WH`, database `LOAN_DEFAULT_DW`, schemas
+`RAW` and `MART`. Raw extracts go to `RAW`; feature, score, segment, risk, and
+cluster tables plus the reporting views go to `MART`.
+
+### Hybrid Streamlit mode
+
+The dashboard can read Snowflake for the main analytics tables while keeping
+model metrics, pattern outputs, and the Data model card local:
+
+```env
+DATA_SOURCE=snowflake
+SNOWFLAKE_PAT=<read-only-token>
 ```
 
-### 4. Build the Dashboard
-- Open Power BI Desktop → **Get Data** → **PostgreSQL database**.
-- Import `fact_transactions`, `fact_loans`, and all `dim_*` tables.
-- Build visuals for Deposits Trend, Branch Performance, Loan Portfolio, and Customer Segments.
+The six Snowflake-backed tables are `MART.MART_LOAN_FEATURES`,
+`MART.MART_MODEL_SCORES`, `MART.MART_LOAN_SEGMENTS`, `MART.MART_LOAN_RISK`,
+`MART.MART_CLUSTER_LABELS`, and `MART.MART_CLUSTERING_COMPARISON`. Everything
+else falls back to `artifacts/` CSVs, and the Data model card stays on DuckDB
+because the galaxy-schema dimensions and facts are not uploaded.
+
+For a read-only dashboard token, run this once as `ACCOUNTADMIN`:
+
+```sql
+CREATE ROLE IF NOT EXISTS DASHBOARD_READER;
+GRANT USAGE ON WAREHOUSE PBI_WH TO ROLE DASHBOARD_READER;
+GRANT USAGE ON DATABASE LOAN_DEFAULT_DW TO ROLE DASHBOARD_READER;
+GRANT USAGE ON SCHEMA LOAN_DEFAULT_DW.RAW TO ROLE DASHBOARD_READER;
+GRANT USAGE ON SCHEMA LOAN_DEFAULT_DW.MART TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_LOAN_FEATURES TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_MODEL_SCORES TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_LOAN_SEGMENTS TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_LOAN_RISK TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_CLUSTER_LABELS TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.MART.MART_CLUSTERING_COMPARISON TO ROLE DASHBOARD_READER;
+GRANT SELECT ON TABLE LOAN_DEFAULT_DW.RAW.RAW_TRANS TO ROLE DASHBOARD_READER;
+GRANT SELECT ON VIEW LOAN_DEFAULT_DW.MART.V_LOAN_PERF TO ROLE DASHBOARD_READER;
+GRANT SELECT ON VIEW LOAN_DEFAULT_DW.MART.V_TRANS_MONTHLY TO ROLE DASHBOARD_READER;
+GRANT ROLE DASHBOARD_READER TO USER DHANUSHPILLAY;
+
+ALTER USER DHANUSHPILLAY ADD PROGRAMMATIC ACCESS TOKEN streamlit_dashboard
+  ROLE_RESTRICTION = 'DASHBOARD_READER'
+  DAYS_TO_EXPIRY = 7;
+```
+
+Set `DATA_SOURCE=duckdb` (the default) to use the local warehouse only. Restart
+Streamlit after changing `DATA_SOURCE` or `SNOWFLAKE_PAT`; cached connections and
+reads are held by the running process.
+
+## Dataset
+
+[PKDD'99 Financial Dataset](https://www.kaggle.com/datasets/siavashraz/1999-czech-financial-dataset):
+anonymized Czech banking records from 1993-1998. Raw CSVs live in `data/` and are
+not generated by the build.
