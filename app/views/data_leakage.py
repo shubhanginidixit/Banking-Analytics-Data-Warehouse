@@ -27,7 +27,7 @@ def data_page() -> None:
     matches = int((audit["used"] == audit["n_txn"]).sum())
 
     page_header(
-        "Data",
+        "Dashboard 3 · Supervised Learning Dataset",
         f"{summary['total']:,} transactions, {len(features):,} loans, no lookahead",
         "The modelling table is built from the local DuckDB galaxy schema. One rule keeps it "
         "honest: every transaction used for a loan happened strictly before the loan date.",

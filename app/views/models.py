@@ -23,6 +23,7 @@ from components.common import (
     ref_rule,
     roc_pr_frames,
     score_config,
+    scored_frame,
     section,
     show,
 )
@@ -255,7 +256,7 @@ def models_page() -> None:
 
         st.markdown("**Confusion matrix, out-of-fold scores**")
         cutoff = st.slider("Cutoff", 0.05, 0.95, 0.50, 0.01, key="models_cutoff")
-        show(confusion_figure(load_scores(), cutoff))
+        show(confusion_figure(scored_frame(load_scores(), features), cutoff))
 
     with tabs[2]:
         if tuning is not None:

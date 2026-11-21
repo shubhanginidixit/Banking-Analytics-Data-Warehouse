@@ -3,11 +3,13 @@
 Required env: SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_ROLE,
   SNOWFLAKE_WAREHOUSE=PBI_WH, SNOWFLAKE_DATABASE=LOAN_DEFAULT_DW
 Auth: SNOWFLAKE_PAT, or SNOWFLAKE_PASSWORD with optional TOTP prompt.
-Optional: SNOWFLAKE_SCHEMA=RAW
+
+Raw extracts go to RAW; modelled tables go to MART. Each target table is
+truncated before loading, so rerunning the upload is idempotent.
 
 The DDL creates the target tables. This script renames the few CSV columns that
-differ from the DDL, drops the extra date column in the risk table, checks every
-column against Snowflake before writing, and never creates tables automatically.
+differ from the DDL, drops the extra date column in the risk table, and checks
+every column against Snowflake before writing. It never creates tables.
 """
 import getpass
 import os
@@ -22,30 +24,58 @@ from snowflake.connector.pandas_tools import write_pandas
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
 
-FILES = {  # csv path -> (table, sep, renames, drop)
-    "data/loan.csv": ("RAW_LOAN", ";", {"date": "loan_date"}, []),
-    "data/trans.csv": ("RAW_TRANS", ";", {"date": "trans_date"}, []),
-    "data/client.csv": ("RAW_CLIENT", ";", {}, []),
-    "data/account.csv": ("RAW_ACCOUNT", ";", {"date": "open_date"}, []),
-    "data/disp.csv": ("RAW_DISP", ";", {}, []),
+FILES = {  # csv path -> (table, schema, sep, renames, drop)
+    "data/loan.csv": ("RAW_LOAN", "RAW", ";", {"date": "loan_date"}, []),
+    "data/trans.csv": ("RAW_TRANS", "RAW", ";", {"date": "trans_date"}, []),
+    "data/client.csv": ("RAW_CLIENT", "RAW", ";", {}, []),
+    "data/account.csv": ("RAW_ACCOUNT", "RAW", ";", {"date": "open_date"}, []),
+    "data/disp.csv": ("RAW_DISP", "RAW", ";", {}, []),
     "data/features/loan_features.csv": (
         "MART_LOAN_FEATURES",
+        "MART",
         ",",
         {"date": "loan_date"},
         [],
     ),
-    "artifacts/metrics/model_scores.csv": ("MART_MODEL_SCORES", ",", {}, []),
-    "artifacts/segments/loan_segments.csv": ("MART_LOAN_SEGMENTS", ",", {}, []),
+    "artifacts/metrics/model_scores.csv": (
+        "MART_MODEL_SCORES",
+        "MART",
+        ",",
+        {},
+        [],
+    ),
+    "artifacts/segments/loan_segments.csv": (
+        "MART_LOAN_SEGMENTS",
+        "MART",
+        ",",
+        {},
+        [],
+    ),
     "artifacts/features/loan_risk_dashboard.csv": (
         "MART_LOAN_RISK",
+        "MART",
         ",",
         {},
         ["date"],
     ),
+    "artifacts/segments/cluster_labels.csv": (
+        "MART_CLUSTER_LABELS",
+        "MART",
+        ",",
+        {},
+        [],
+    ),
+    "artifacts/metrics/clustering_comparison.csv": (
+        "MART_CLUSTERING_COMPARISON",
+        "MART",
+        ",",
+        {},
+        [],
+    ),
 }
 
-schema = os.environ.get("SNOWFLAKE_SCHEMA", "RAW")
 database = os.environ.get("SNOWFLAKE_DATABASE", "LOAN_DEFAULT_DW")
+session_schema = os.environ.get("SNOWFLAKE_SCHEMA", "RAW")
 
 
 def connect_snowflake():
@@ -55,7 +85,7 @@ def connect_snowflake():
         "role": os.environ["SNOWFLAKE_ROLE"],
         "warehouse": os.environ.get("SNOWFLAKE_WAREHOUSE", "PBI_WH"),
         "database": database,
-        "schema": schema,
+        "schema": session_schema,
     }
     pat = os.environ.get("SNOWFLAKE_PAT")
     if pat:
@@ -87,7 +117,7 @@ def main() -> None:
     conn = connect_snowflake()
     try:
         cursor = conn.cursor()
-        for rel, (table, sep, renames, drop) in FILES.items():
+        for rel, (table, target_schema, sep, renames, drop) in FILES.items():
             df = pd.read_csv(ROOT / rel, sep=sep, low_memory=False)
             df = df.rename(columns=renames).drop(columns=drop, errors="ignore")
             df.columns = [str(column).upper() for column in df.columns]
@@ -99,27 +129,31 @@ def main() -> None:
             cursor.execute(
                 f"SELECT COLUMN_NAME FROM {database}.INFORMATION_SCHEMA.COLUMNS "
                 "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION",
-                (schema, table),
+                (target_schema, table),
             )
             expected = [row[0] for row in cursor.fetchall()]
             missing = set(expected) - set(df.columns)
             extra = set(df.columns) - set(expected)
             if missing or extra:
                 raise SystemExit(
-                    f"{table}: missing={sorted(missing)} extra={sorted(extra)}"
+                    f"{target_schema}.{table}: missing={sorted(missing)} "
+                    f"extra={sorted(extra)}"
                 )
 
+            cursor.execute(
+                f"TRUNCATE TABLE IF EXISTS {database}.{target_schema}.{table}"
+            )
             ok, _, nrows, _ = write_pandas(
                 conn,
                 df,
                 table,
-                schema=schema,
+                schema=target_schema,
                 chunk_size=100_000,
                 auto_create_table=False,
             )
             if not ok:
-                raise SystemExit(f"{table}: write failed")
-            print(f"{table}: {nrows} rows")
+                raise SystemExit(f"{target_schema}.{table}: write failed")
+            print(f"{target_schema}.{table}: {nrows} rows")
     finally:
         conn.close()
     print("upload complete")

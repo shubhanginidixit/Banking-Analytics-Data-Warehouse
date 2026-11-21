@@ -15,12 +15,20 @@ from pathlib import Path
 
 import duckdb
 import joblib
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from mlxtend.frequent_patterns import apriori, association_rules
-from sklearn.cluster import AgglomerativeClustering, DBSCAN
+from sklearn.cluster import AgglomerativeClustering, DBSCAN, KMeans
+from sklearn.decomposition import PCA
 from sklearn.metrics import (
+    adjusted_rand_score,
     average_precision_score,
+    calinski_harabasz_score,
+    davies_bouldin_score,
     f1_score,
     pairwise_distances,
     precision_recall_curve,
@@ -53,6 +61,24 @@ DROP = {
     "gender",
     "target",
 }
+
+CLUSTER_FEATURES = [
+    "n_txn",
+    "n_deposit",
+    "n_withdrawal",
+    "sum_deposit",
+    "sum_withdrawal",
+    "avg_amount",
+    "std_amount",
+    "avg_balance",
+    "min_balance",
+    "max_balance",
+    "balance_at_loan",
+    "months_active",
+    "txn_per_month",
+]
+CLUSTER_METHODS = ["kmeans", "kmedoids", "agnes", "dbscan"]
+MIN_CLUSTER_SHARE = 0.05
 
 BIN_SPECS = {
     "amount": ([-np.inf, 50_000, 100_000, np.inf], ["low", "mid", "high"]),
@@ -172,7 +198,9 @@ def run_cba(x: pd.DataFrame, y: pd.Series) -> tuple[dict, pd.DataFrame, pd.DataF
     return metrics, pd.DataFrame({"prob_default": scores}), final_rules
 
 
-def k_medoids(distance: np.ndarray, k: int, seed: int = SEED) -> np.ndarray:
+def k_medoids(
+    distance: np.ndarray, k: int, seed: int = SEED
+) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
     medoids = rng.choice(len(distance), k, replace=False)
     for _ in range(100):
@@ -189,61 +217,500 @@ def k_medoids(distance: np.ndarray, k: int, seed: int = SEED) -> np.ndarray:
         if set(updated) == set(medoids):
             break
         medoids = updated
-    return np.argmin(distance[:, medoids], axis=1)
+    labels = np.argmin(distance[:, medoids], axis=1)
+    return labels, medoids
 
 
-def best_k(scaled: np.ndarray, fit) -> tuple[int, np.ndarray]:
-    best = (-1.0, 2, np.zeros(len(scaled), dtype=int))
-    for k in range(2, 6):
+def fit_kmedoids(distance: np.ndarray, k: int, n_init: int = 5) -> np.ndarray:
+    points = np.arange(len(distance))
+    best_inertia = np.inf
+    best_labels = None
+    for offset in range(n_init):
+        labels, medoids = k_medoids(distance, k, seed=SEED + offset)
+        inertia = float(distance[points, medoids[labels]].sum())
+        if inertia < best_inertia:
+            best_inertia = inertia
+            best_labels = labels
+    return best_labels
+
+
+def merge_small_clusters(
+    labels: np.ndarray, min_share: float = MIN_CLUSTER_SHARE
+) -> np.ndarray:
+    merged = labels.copy()
+    counts = pd.Series(labels).value_counts()
+    small = counts[(counts.index != -1) & (counts / len(labels) < min_share)].index
+    if len(small):
+        merged[np.isin(merged, small)] = -1
+    return merged
+
+
+def cluster_scores(scaled: np.ndarray, labels: np.ndarray) -> dict:
+    mask = labels != -1
+    values = labels[mask]
+    n_clusters = int(len(np.unique(values)))
+    scores = {
+        "n_clusters": n_clusters,
+        "silhouette": np.nan,
+        "davies_bouldin": np.nan,
+        "calinski_harabasz": np.nan,
+        "noise_share": float((~mask).mean()),
+        "coverage": float(mask.mean()),
+        "min_cluster_share": float(
+            pd.Series(values).value_counts(normalize=True).min()
+        ) if n_clusters >= 2 else np.nan,
+    }
+    if n_clusters >= 2 and mask.sum() > n_clusters:
+        scores["silhouette"] = float(silhouette_score(scaled[mask], values))
+        scores["davies_bouldin"] = float(davies_bouldin_score(scaled[mask], values))
+        scores["calinski_harabasz"] = float(
+            calinski_harabasz_score(scaled[mask], values)
+        )
+    return scores
+
+
+def select_partitional(scaled: np.ndarray, fit) -> tuple[dict, list[dict]]:
+    rows = []
+    candidates = []
+    for k in range(2, 7):
         labels = fit(k)
-        silhouette = silhouette_score(scaled, labels)
-        if silhouette > best[0]:
-            best = (silhouette, k, labels)
-    return best[1], best[2]
+        scores = cluster_scores(scaled, labels)
+        row = {
+            "param_name": "k",
+            "param_value": k,
+            **scores,
+            "valid": scores["min_cluster_share"] >= MIN_CLUSTER_SHARE,
+            "selected": False,
+        }
+        rows.append(row)
+        candidates.append(
+            {
+                "param_value": k,
+                "labels": labels,
+                "scores": scores,
+            }
+        )
+    valid = [candidate for row, candidate in zip(rows, candidates) if row["valid"]]
+    if not valid:
+        valid = candidates
+    best = max(valid, key=lambda item: item["scores"]["silhouette"])
+    for row in rows:
+        row["selected"] = row["param_value"] == best["param_value"]
+    return best, rows
 
 
-def run_clusters(x: pd.DataFrame, loan_ids: pd.Series, y: pd.Series) -> tuple[pd.DataFrame, pd.DataFrame]:
-    scaled = StandardScaler().fit_transform(x)
-    distance = pairwise_distances(scaled)
-    medoid_k, medoid_labels = best_k(scaled, lambda k: k_medoids(distance, k))
+def select_dbscan(scaled: np.ndarray) -> tuple[dict, list[dict]]:
+    rows = []
+    candidates = []
+    for eps in np.arange(0.8, 2.01, 0.1):
+        raw = DBSCAN(eps=float(eps), min_samples=5).fit_predict(scaled)
+        labels = merge_small_clusters(raw)
+        scores = cluster_scores(scaled, labels)
+        row = {
+            "param_name": "eps",
+            "param_value": round(float(eps), 1),
+            **scores,
+            "valid": scores["n_clusters"] >= 2
+            and 0.10 <= scores["noise_share"] <= 0.20,
+            "selected": False,
+        }
+        rows.append(row)
+        candidates.append(
+            {
+                "param_value": round(float(eps), 1),
+                "labels": labels,
+                "scores": scores,
+            }
+        )
+    valid = [candidate for row, candidate in zip(rows, candidates) if row["valid"]]
+    if valid:
+        best = max(valid, key=lambda item: item["scores"]["silhouette"])
+    else:
+        core = [
+            candidate
+            for row, candidate in zip(rows, candidates)
+            if row["coverage"] >= 0.75 and row["noise_share"] <= 0.20
+        ]
+        if core:
+            best = min(core, key=lambda item: item["param_value"])
+        else:
+            best = max(candidates, key=lambda item: item["scores"]["coverage"])
+    for row in rows:
+        row["selected"] = row["param_value"] == best["param_value"]
+    return best, rows
 
-    agnes_k, agnes = best_k(
-        scaled,
-        lambda k: AgglomerativeClustering(n_clusters=k, linkage="ward").fit_predict(scaled),
-    )
 
-    best_dbscan = (-1.0, np.full(len(x), -1))
-    for eps in np.arange(0.8, 3.01, 0.1):
-        labels = DBSCAN(eps=float(eps), min_samples=5).fit_predict(scaled)
-        mask = labels != -1
-        clusters = set(labels[mask])
-        if not 2 <= len(clusters) <= 10:
-            continue
-        silhouette = silhouette_score(scaled[mask], labels[mask])
-        if silhouette > best_dbscan[0]:
-            best_dbscan = (silhouette, labels)
+def stability_scores(
+    scaled: np.ndarray, fit_predict, n_runs: int = 10, fraction: float = 0.9
+) -> dict:
+    full = fit_predict(scaled)
+    rng = np.random.default_rng(SEED)
+    values = []
+    for _ in range(n_runs):
+        index = rng.choice(
+            len(scaled), size=int(round(fraction * len(scaled))), replace=False
+        )
+        values.append(
+            float(adjusted_rand_score(full[index], fit_predict(scaled[index])))
+        )
+    return {
+        "mean_ari": float(np.mean(values)),
+        "std_ari": float(np.std(values)),
+        "min_ari": float(np.min(values)),
+        "max_ari": float(np.max(values)),
+        "n_runs": n_runs,
+    }
 
-    labels = pd.DataFrame({"loan_id": loan_ids.to_numpy()})
-    labels["kmedoids"] = medoid_labels
-    labels["agnes"] = agnes
-    labels["dbscan"] = best_dbscan[1]
 
-    profiles = []
-    for method in ["kmedoids", "agnes", "dbscan"]:
+def build_profiles(
+    labels: pd.DataFrame, features: pd.DataFrame, y: pd.Series
+) -> pd.DataFrame:
+    rows = []
+    for method in CLUSTER_METHODS:
         for cluster, group in labels.groupby(method):
-            profiles.append(
+            index = group.index
+            rows.append(
                 {
                     "method": method,
                     "cluster": int(cluster),
                     "size": len(group),
-                    "default_rate": float(y.iloc[group.index].mean()),
-                    "avg_amount": float(x.iloc[group.index]["amount"].mean()),
-                    "avg_balance": float(x.iloc[group.index]["avg_balance"].mean()),
-                    "avg_age": float(x.iloc[group.index]["age"].mean()),
-                    "avg_n_txn": float(x.iloc[group.index]["n_txn"].mean()),
+                    "share": len(group) / len(labels),
+                    "default_rate": float(y.iloc[index].mean()),
+                    "avg_amount": float(features.iloc[index]["amount"].mean()),
+                    "avg_balance": float(features.iloc[index]["avg_balance"].mean()),
+                    "avg_age": float(features.iloc[index]["age"].mean()),
+                    "avg_n_txn": float(features.iloc[index]["n_txn"].mean()),
+                    "avg_months_active": float(
+                        features.iloc[index]["months_active"].mean()
+                    ),
+                    "avg_txn_per_month": float(
+                        features.iloc[index]["txn_per_month"].mean()
+                    ),
+                    "avg_sum_deposit": float(
+                        features.iloc[index]["sum_deposit"].mean()
+                    ),
+                    "avg_sum_withdrawal": float(
+                        features.iloc[index]["sum_withdrawal"].mean()
+                    ),
+                    "avg_balance_at_loan": float(
+                        features.iloc[index]["balance_at_loan"].mean()
+                    ),
                 }
             )
-    return labels, pd.DataFrame(profiles)
+    profiles = pd.DataFrame(rows)
+    order = {method: index for index, method in enumerate(CLUSTER_METHODS)}
+    profiles["_order"] = profiles["method"].map(order)
+    return (
+        profiles.sort_values(["_order", "cluster"])
+        .drop(columns="_order")
+        .reset_index(drop=True)
+    )
+
+
+def kmeans_segment_outputs(
+    features: pd.DataFrame, labels: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    frame = features.assign(segment=labels["kmeans"].to_numpy())
+    rows = []
+    for segment, group in frame.groupby("segment"):
+        row = {"segment": int(segment)}
+        row.update({feature: float(group[feature].mean()) for feature in CLUSTER_FEATURES})
+        row["size"] = int(len(group))
+        row["default_rate"] = float(group["target"].mean())
+        rows.append(row)
+    segments = frame[["loan_id", "segment"]].sort_values("loan_id").reset_index(drop=True)
+    return segments, pd.DataFrame(rows)
+
+
+def save_cluster_figures(
+    comparison: pd.DataFrame,
+    stability: pd.DataFrame,
+    labels: pd.DataFrame,
+    profiles: pd.DataFrame,
+    features: pd.DataFrame,
+    scaled: np.ndarray,
+) -> None:
+    figures = ARTIFACTS / "figures"
+    figures.mkdir(parents=True, exist_ok=True)
+    display = {
+        "kmeans": "K-Means",
+        "kmedoids": "K-Medoids",
+        "agnes": "AGNES (Ward)",
+        "dbscan": "DBSCAN",
+    }
+    palette = {
+        "kmeans": "#2f6f9f",
+        "kmedoids": "#66c2a5",
+        "agnes": "#8da0cb",
+        "dbscan": "#d64545",
+    }
+    params = comparison.set_index("method")["parameter"].to_dict()
+    metrics = comparison.set_index("method").loc[CLUSTER_METHODS]
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    flat = axes.ravel()
+    for axis, column, title in zip(
+        flat[:3],
+        ["silhouette", "davies_bouldin", "calinski_harabasz"],
+        [
+            "Silhouette (higher is better)",
+            "Davies-Bouldin (lower is better)",
+            "Calinski-Harabasz (higher is better)",
+        ],
+    ):
+        values = metrics[column].astype(float)
+        bars = axis.bar(
+            [display[method] for method in CLUSTER_METHODS],
+            values,
+            color=[palette[method] for method in CLUSTER_METHODS],
+        )
+        axis.set_title(title)
+        axis.tick_params(axis="x", rotation=15)
+        for bar, value in zip(bars, values):
+            height = 0.0 if pd.isna(value) else float(value)
+            axis.text(
+                bar.get_x() + bar.get_width() / 2,
+                height,
+                "n/a" if pd.isna(value) else f"{value:.3f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+    stability_frame = stability.set_index("method").loc[CLUSTER_METHODS]
+    bars = flat[3].bar(
+        [display[method] for method in CLUSTER_METHODS],
+        stability_frame["mean_ari"],
+        yerr=stability_frame["std_ari"],
+        capsize=3,
+        color=[palette[method] for method in CLUSTER_METHODS],
+    )
+    flat[3].set_title("Stability ARI (higher is better)")
+    flat[3].tick_params(axis="x", rotation=15)
+    for bar, value in zip(bars, stability_frame["mean_ari"]):
+        flat[3].text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            f"{value:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+    fig.tight_layout()
+    fig.savefig(figures / "clustering_metrics.png", dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+    pca = PCA(n_components=2, random_state=SEED)
+    points = pca.fit_transform(scaled)
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    for axis, method in zip(axes.flat, CLUSTER_METHODS):
+        values = labels[method].to_numpy()
+        for cluster in sorted(set(values)):
+            mask = values == cluster
+            color = "#b0b0b0" if cluster == -1 else palette[method]
+            alpha = 0.45 if cluster == -1 else 0.75
+            axis.scatter(
+                points[mask, 0],
+                points[mask, 1],
+                s=16,
+                alpha=alpha,
+                color=color,
+                label="noise" if cluster == -1 else f"cluster {cluster}",
+            )
+        axis.set_title(f"{display[method]} ({params[method]})")
+        axis.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.0%})")
+        axis.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.0%})")
+        axis.legend(fontsize=7, markerscale=1.5, frameon=False)
+    fig.tight_layout()
+    fig.savefig(figures / "clustering_pca.png", dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+    base_rate = float(features["target"].mean()) * 100
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharey=True)
+    for axis, method in zip(axes.flat, CLUSTER_METHODS):
+        frame = profiles[profiles["method"] == method].sort_values("cluster")
+        names = ["noise" if value == -1 else str(value) for value in frame["cluster"]]
+        rates = frame["default_rate"].to_numpy() * 100
+        colors = ["#d64545" if rate > base_rate else "#2f6f9f" for rate in rates]
+        bars = axis.bar(names, rates, color=colors)
+        axis.axhline(base_rate, color="#8a8f98", linestyle="--", linewidth=1)
+        axis.set_title(display[method])
+        axis.set_ylabel("Default rate (%)")
+        for bar, rate in zip(bars, rates):
+            axis.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height(),
+                f"{rate:.1f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+    fig.tight_layout()
+    fig.savefig(
+        figures / "clustering_default_rates.png", dpi=160, bbox_inches="tight"
+    )
+    plt.close(fig)
+
+
+def run_clusters(
+    features: pd.DataFrame, y: pd.Series
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+]:
+    behaviour = features[CLUSTER_FEATURES].astype(float)
+    scaled = StandardScaler().fit_transform(behaviour)
+    distance = pairwise_distances(scaled)
+
+    kmeans_best, kmeans_rows = select_partitional(
+        scaled,
+        lambda k: KMeans(
+            n_clusters=k, n_init=10, random_state=SEED
+        ).fit_predict(scaled),
+    )
+    kmedoids_best, kmedoids_rows = select_partitional(
+        scaled, lambda k: fit_kmedoids(distance, k)
+    )
+    agnes_best, agnes_rows = select_partitional(
+        scaled,
+        lambda k: AgglomerativeClustering(
+            n_clusters=k, linkage="ward"
+        ).fit_predict(scaled),
+    )
+    dbscan_best, dbscan_rows = select_dbscan(scaled)
+
+    labels = features[["loan_id"]].copy()
+    labels["kmeans"] = kmeans_best["labels"]
+    labels["kmedoids"] = kmedoids_best["labels"]
+    labels["agnes"] = agnes_best["labels"]
+    labels["dbscan"] = dbscan_best["labels"]
+
+    profiles = build_profiles(labels, features, y)
+
+    stability_rows = [
+        {
+            "method": "kmeans",
+            **stability_scores(
+                scaled,
+                lambda data: KMeans(
+                    n_clusters=kmeans_best["param_value"],
+                    n_init=10,
+                    random_state=SEED,
+                ).fit_predict(data),
+            ),
+        },
+        {
+            "method": "kmedoids",
+            **stability_scores(
+                scaled,
+                lambda data: fit_kmedoids(
+                    pairwise_distances(data), kmedoids_best["param_value"]
+                ),
+            ),
+        },
+        {
+            "method": "agnes",
+            **stability_scores(
+                scaled,
+                lambda data: AgglomerativeClustering(
+                    n_clusters=agnes_best["param_value"], linkage="ward"
+                ).fit_predict(data),
+            ),
+        },
+        {
+            "method": "dbscan",
+            **stability_scores(
+                scaled,
+                lambda data: merge_small_clusters(
+                    DBSCAN(
+                        eps=dbscan_best["param_value"], min_samples=5
+                    ).fit_predict(data)
+                ),
+            ),
+        },
+    ]
+    stability = pd.DataFrame(stability_rows)
+
+    roles = {
+        "kmeans": "primary segmentation",
+        "kmedoids": "alternative partitional",
+        "agnes": "hierarchical alternative",
+        "dbscan": "outlier / risk flag",
+    }
+    comparison_rows = []
+    for method, best in [
+        ("kmeans", kmeans_best),
+        ("kmedoids", kmedoids_best),
+        ("agnes", agnes_best),
+        ("dbscan", dbscan_best),
+    ]:
+        parameter = (
+            f"eps={best['param_value']:.1f}, min_samples=5"
+            if method == "dbscan"
+            else f"k={best['param_value']}"
+        )
+        comparison_rows.append(
+            {
+                "method": method,
+                "parameter": parameter,
+                **best["scores"],
+                "role": roles[method],
+                "recommended": method == "kmeans",
+            }
+        )
+    comparison = pd.DataFrame(comparison_rows).merge(
+        stability[["method", "mean_ari", "std_ari"]].rename(
+            columns={"mean_ari": "stability_ari_mean", "std_ari": "stability_ari_std"}
+        ),
+        on="method",
+        how="left",
+    )
+    comparison["_order"] = comparison["method"].map(
+        {method: index for index, method in enumerate(CLUSTER_METHODS)}
+    )
+    comparison = (
+        comparison.sort_values("_order")
+        .drop(columns="_order")
+        .reset_index(drop=True)
+    )
+    comparison = comparison[
+        [
+            "method",
+            "parameter",
+            "n_clusters",
+            "silhouette",
+            "davies_bouldin",
+            "calinski_harabasz",
+            "noise_share",
+            "coverage",
+            "min_cluster_share",
+            "stability_ari_mean",
+            "stability_ari_std",
+            "role",
+            "recommended",
+        ]
+    ]
+
+    tuning = pd.DataFrame(
+        [
+            {"method": "kmeans", **row}
+            for row in kmeans_rows
+        ]
+        + [{"method": "kmedoids", **row} for row in kmedoids_rows]
+        + [{"method": "agnes", **row} for row in agnes_rows]
+        + [{"method": "dbscan", **row} for row in dbscan_rows]
+    )
+
+    segments, segment_profile = kmeans_segment_outputs(features, labels)
+
+    save_cluster_figures(comparison, stability, labels, profiles, features, scaled)
+
+    labels = labels.sort_values("loan_id").reset_index(drop=True)
+    return labels, profiles, comparison, tuning, stability, segments, segment_profile
 
 
 def main() -> None:
@@ -257,7 +724,7 @@ def main() -> None:
     print("Mining CBA rules...")
     cba_metrics, cba_scores, cba_rules = run_cba(x, y)
 
-    for folder in ("metrics", "models", "rules", "segments"):
+    for folder in ("metrics", "models", "rules", "segments", "figures"):
         (ARTIFACTS / folder).mkdir(parents=True, exist_ok=True)
 
     metrics = pd.DataFrame([mlp_metrics, cba_metrics])
@@ -274,13 +741,33 @@ def main() -> None:
     scored.to_csv(ARTIFACTS / "metrics" / "advanced_scores.csv", index=False)
 
     print("Clustering...")
-    labels, profiles = run_clusters(x, features["loan_id"], y)
+    (
+        labels,
+        profiles,
+        comparison,
+        tuning,
+        stability,
+        segments,
+        segment_profile,
+    ) = run_clusters(features, y)
     labels.to_csv(ARTIFACTS / "segments" / "cluster_labels.csv", index=False)
     profiles.to_csv(ARTIFACTS / "segments" / "cluster_profiles.csv", index=False)
+    segments.to_csv(ARTIFACTS / "segments" / "loan_segments.csv", index=False)
+    segment_profile.to_csv(
+        ARTIFACTS / "segments" / "segment_profiles.csv", index=False
+    )
+    comparison.to_csv(
+        ARTIFACTS / "metrics" / "clustering_comparison.csv", index=False
+    )
+    tuning.to_csv(ARTIFACTS / "metrics" / "clustering_tuning.csv", index=False)
+    stability.to_csv(
+        ARTIFACTS / "metrics" / "clustering_stability.csv", index=False
+    )
 
     print(metrics.to_string(index=False))
     print(f"rules: {len(cba_rules)}")
-    print(profiles.to_string(index=False))
+    print(comparison.to_string(index=False))
+    print(stability.to_string(index=False))
 
 
 if __name__ == "__main__":

@@ -16,10 +16,12 @@ DB = ROOT / os.getenv("LOCAL_DB_PATH", "data/banking_dw.duckdb")
 SOURCE = os.getenv("DATA_SOURCE", "duckdb").strip().lower()
 
 SNOWFLAKE_TABLES = {
-    "analytics.loan_features": "RAW.MART_LOAN_FEATURES",
-    "analytics.model_scores": "RAW.MART_MODEL_SCORES",
-    "analytics.loan_segments": "RAW.MART_LOAN_SEGMENTS",
-    "analytics.loan_risk_dashboard": "RAW.MART_LOAN_RISK",
+    "analytics.loan_features": "MART.MART_LOAN_FEATURES",
+    "analytics.model_scores": "MART.MART_MODEL_SCORES",
+    "analytics.loan_segments": "MART.MART_LOAN_SEGMENTS",
+    "analytics.loan_risk_dashboard": "MART.MART_LOAN_RISK",
+    "analytics.cluster_labels": "MART.MART_CLUSTER_LABELS",
+    "analytics.clustering_comparison": "MART.MART_CLUSTERING_COMPARISON",
 }
 
 
@@ -139,7 +141,7 @@ def snowflake_leakage() -> pd.DataFrame:
                 t.trans_date < TO_NUMBER(TO_CHAR(f.parsed_date, 'YYMMDD'))
             ) AS used,
             COUNT(t.trans_date) AS total
-        FROM RAW.MART_LOAN_FEATURES f
+        FROM MART.MART_LOAN_FEATURES f
         LEFT JOIN RAW.RAW_TRANS t
             ON t.account_id = f.account_id
         GROUP BY f.loan_id, f.account_id, f.parsed_date, f.n_txn

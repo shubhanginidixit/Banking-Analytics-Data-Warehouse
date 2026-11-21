@@ -86,7 +86,29 @@ FOREIGN_KEYS = [
     ("fact_transactions", "date_id", "dim_date"),
 ]
 
-METHOD_NAMES = {"kmedoids": "K-medoids", "agnes": "AGNES", "dbscan": "DBSCAN"}
+CLUSTER_FEATURES = [
+    "n_txn",
+    "n_deposit",
+    "n_withdrawal",
+    "sum_deposit",
+    "sum_withdrawal",
+    "avg_amount",
+    "std_amount",
+    "avg_balance",
+    "min_balance",
+    "max_balance",
+    "balance_at_loan",
+    "months_active",
+    "txn_per_month",
+]
+
+METHOD_NAMES = {
+    "kmeans": "K-Means",
+    "kmedoids": "K-Medoids",
+    "agnes": "AGNES (Ward)",
+    "dbscan": "DBSCAN",
+}
+METHOD_ORDER = list(METHOD_NAMES)
 
 
 def stress_text(key: str, value: float) -> str:
@@ -611,7 +633,7 @@ def cluster_rate_figure(profiles: pd.DataFrame, base_rate: float):
     names = METHOD_NAMES
     frame = profiles.copy()
     frame["method"] = pd.Categorical(
-        frame["method"], ["kmedoids", "agnes", "dbscan"], ordered=True
+        frame["method"], METHOD_ORDER, ordered=True
     )
     frame = frame.sort_values(["method", "cluster"]).reset_index(drop=True)
     frame["Label"] = [
@@ -650,19 +672,14 @@ def cluster_map_figures(features: pd.DataFrame, labels: pd.DataFrame):
     from sklearn.decomposition import PCA
     from sklearn.preprocessing import StandardScaler
 
-    columns = [column for column in features.columns if column not in DROP]
-    matrix = StandardScaler().fit_transform(features[columns].astype(float))
+    matrix = StandardScaler().fit_transform(features[CLUSTER_FEATURES].astype(float))
     pca = PCA(n_components=2, random_state=42)
     points = pca.fit_transform(matrix)
     joined = labels.set_index("loan_id").reindex(features["loan_id"])
     palette = ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f"]
 
     figures = []
-    for key, title in [
-        ("kmedoids", "K-medoids"),
-        ("agnes", "AGNES (Ward)"),
-        ("dbscan", "DBSCAN"),
-    ]:
+    for key, title in METHOD_NAMES.items():
         values = joined[key].fillna(-1).astype(int).to_numpy()
         frame = pd.DataFrame(
             {
