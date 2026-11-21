@@ -133,9 +133,8 @@ artifacts, with CSV snapshots as a fallback. The schema diagram is rendered with
 app/            Streamlit app and DuckDB access
 artifacts/      Saved models, metrics, segments, rules, figures
 data/           Raw CSVs, DuckDB file, clean snapshots
-docs/           final/, jury1/, jury2/, references/
+docs/           Final report and figures
 notebooks/      Preprocessing, features, EDA, modelling, segmentation, clustering comparison
-screenshots/    App captures
 scripts/        ETL, local build, analytics load, Snowflake upload
 sql/            local/, snowflake/
 tests/          ETL and local-database checks
