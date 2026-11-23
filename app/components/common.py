@@ -323,10 +323,21 @@ def parse_itemset(value: str) -> str:
     try:
         parsed = literal_eval(text)
     except (ValueError, SyntaxError):
-        return text
+        parsed = text
     if isinstance(parsed, (set, frozenset, list, tuple)):
-        return ", ".join(sorted(str(item) for item in parsed))
-    return str(parsed)
+        items = sorted(str(item) for item in parsed)
+    else:
+        items = [str(parsed)]
+
+    labels = {
+        "type_PRIJEM": "Incoming money",
+        "type_VYDAJ": "Outgoing money",
+        "type_VYBER": "Cash withdrawal",
+        "high_amount": "Large transaction",
+        "negative_balance": "Negative balance",
+        "default": "Loan default",
+    }
+    return ", ".join(labels.get(item, item.replace("_", " ")) for item in items)
 
 
 def model_columns(model, features: pd.DataFrame) -> list[str]:

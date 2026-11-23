@@ -37,17 +37,17 @@ def patterns_page() -> None:
     loans = len(features)
     page_header(
         "Patterns",
-        f"{len(itemsets)} itemsets, {len(rules)} rules, one worth a second look",
-        "FP-Growth and Apriori over pre-loan behaviour baskets. Support, confidence and lift "
-        f"are measured against all {loans} loans.",
+        f"{len(itemsets)} patterns, {len(rules)} rules",
+        "We look for common money patterns before each loan. "
+        f"The results cover {loans} loans.",
     )
 
     top = rules.sort_values("lift", ascending=False).iloc[0]
     kpi_row(
         [
-            ("Itemsets", f"{len(itemsets)}", "Identical across both algorithms"),
-            ("Default rules", f"{len(rules)}", "Consequence is default"),
-            ("Top-rule support", percent(top["support"]), f"{round(top['support'] * loans)} loans"),
+            ("Patterns", f"{len(itemsets)}", "Common combinations"),
+            ("Default rules", f"{len(rules)}", "Rules that indicate default"),
+            ("Top-rule share", percent(top["support"]), f"{round(top['support'] * loans)} loans"),
             ("Top-rule lift", f"{top['lift']:.2f}", f"Against the {percent(features['target'].mean())} base rate"),
         ]
     )
@@ -146,29 +146,28 @@ def patterns_page() -> None:
             "The label counts the loans each rule covers."
         )
 
-    section("Itemsets", f"Apriori and FP-Growth return the same {len(itemsets)} sets")
-    threshold = st.slider("Minimum support", 0, 100, 20, step=5)
+    section("Common patterns", f"{len(itemsets)} patterns found")
+    threshold = st.slider("Minimum share of loans", 0, 100, 20, step=5)
     table = itemsets.copy()
-    table["Support %"] = (table["support"] * 100).round(2)
-    filtered = table[table["Support %"] >= threshold].sort_values("Support %", ascending=False)
-    table_view = filtered.assign(Items=filtered["itemsets"].map(parse_itemset))[["Items", "Support %"]]
-    top = table_view.head(12).assign(Items=lambda x: x["Items"].str.replace("_", " "))
+    table["Share of loans %"] = (table["support"] * 100).round(2)
+    filtered = table[table["Share of loans %"] >= threshold].sort_values("Share of loans %", ascending=False)
+    table_view = filtered.assign(Pattern=filtered["itemsets"].map(parse_itemset))[["Pattern", "Share of loans %"]]
+    top = table_view.head(12)
     show(
         alt.Chart(top)
         .mark_bar()
         .encode(
-            y=alt.Y("Items:N", sort="-x", title=None, axis=alt.Axis(labelLimit=300, labelOverlap=False)),
-            x=alt.X("Support %:Q", title="Support (%)"),
+            y=alt.Y("Pattern:N", sort="-x", title=None, axis=alt.Axis(labelLimit=300, labelOverlap=False)),
+            x=alt.X("Share of loans %:Q", title="Share of loans (%)"),
             color=alt.value(ACCENT),
-            tooltip=["Items", alt.Tooltip("Support %:Q", format=".1f")],
+            tooltip=["Pattern", alt.Tooltip("Share of loans %:Q", format=".1f")],
         )
         .properties(height=max(260, len(top) * 28))
         .interactive()
     )
     grid(table_view)
     st.caption(
-        f"{len(filtered)} of {len(itemsets)} itemsets at support ≥ {threshold}%. "
-        "Support counts the share of loans that contain the set."
+        f"{len(filtered)} of {len(itemsets)} patterns shown for at least {threshold}% of loans."
     )
 
 
