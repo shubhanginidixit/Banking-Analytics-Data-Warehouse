@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 DB = ROOT / os.getenv("LOCAL_DB_PATH", "data/banking_dw.duckdb")
-SOURCE = os.getenv("DATA_SOURCE", "duckdb").strip().lower()
+SOURCE = os.getenv("DATA_SOURCE", "snowflake").strip().lower()
 
 SNOWFLAKE_TABLES = {
     "analytics.loan_features": "MART.MART_LOAN_FEATURES",
@@ -28,12 +28,13 @@ SNOWFLAKE_TABLES = {
 def data_source_label() -> str:
     if SOURCE != "snowflake":
         return "DuckDB"
-    has_credentials = os.getenv("SNOWFLAKE_PAT") or os.getenv("SNOWFLAKE_PASSWORD")
-    return "Snowflake" if has_credentials else "Snowflake (credentials missing)"
+    return "Snowflake"
 
 
 def snowflake_enabled() -> bool:
-    return SOURCE == "snowflake"
+    if SOURCE != "snowflake":
+        return False
+    return bool(os.getenv("SNOWFLAKE_PAT") or os.getenv("SNOWFLAKE_PASSWORD"))
 
 
 def query(sql: str, params: list | None = None) -> pd.DataFrame:

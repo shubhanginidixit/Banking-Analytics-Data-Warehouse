@@ -98,10 +98,10 @@ def snowflake_page() -> None:
         )
     else:
         note(
-            "The app is reading DuckDB. The Snowflake objects, DDL, loader, and "
-            "verification queries are ready; set DATA_SOURCE=snowflake after the "
-            "upload to switch the six MART tables to live reads.",
-            "Local mode",
+            "Snowflake credentials are not configured. The Snowflake objects, DDL, "
+            "loader, and verification queries are ready; add credentials and connect "
+            "the six MART tables for live reads.",
+            "Connection pending",
             "risk",
         )
 
